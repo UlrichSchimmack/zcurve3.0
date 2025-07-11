@@ -2015,15 +2015,19 @@ if(Est.Method == "EM" & boot.iter == 0) {
 	
 	fit = z.res$fit$Q
 
-	w.sig =	 summary(z.res, type="parameters")$coefficients[(components+1):(2*components)]
-	round(w.sig,3)
+	w.inp =	 summary(z.res, type="parameters")$coefficients[(components+1):(2*components)]
+	round(w.inp,3)
 
-	w.all = w.sig/(pow.dir+sign.error)
-	w.all = w.all/sum(w.all)
+	#w.all = w.sig/(pow.dir+sign.error)
+	#w.all = w.all/sum(w.all)
+	#round(w.all,3)
+
+	cp.res = Compute.Power(Int.Beg = Int.Beg,c(w.inp,ncz,zsds))
+	round(cp.res,3)
+
+	w.all = cp.res[which(substring(names(cp.res),1,5) == "w.all")]
 	round(w.all,3)
-
-	cp.res = Compute.Power(Int.Beg = 0,c(w.all,ncz,zsds))
-	cp.res
+	sum(w.all)
 
 	loc.power = cp.res[which(substring(names(cp.res),1,2) == "lp")]
 	round(loc.power,3)
@@ -2046,7 +2050,6 @@ names(res) = c("ODR","EDR","ERR","FDR","FIT")
 
 #print("Check res")
 #print(res)
-#print(WT)
 
 #print("Finished Computations")
 #res is needed for text in plot
