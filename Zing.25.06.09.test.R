@@ -149,7 +149,7 @@ Est.Method = "OF"
 
 boot.iter = 0
 
-TEST4HETEROGENEITY = FALSE
+TEST4HETEROGENEITY = 0
 
 EM.criterion = 1e-3
 EM.max.iter = 1000
@@ -157,6 +157,7 @@ EM.max.iter = 1000
 parallel = TRUE
 
 CI.ALPHA = .05
+
 
 TEST4BIAS = FALSE
 just = .6 ### ~ p = .01 two-tailed
@@ -185,9 +186,6 @@ Zing = function(z.val.input,lp=c() ) {
 ### function to detect bias
 
 test.bias = function(w.all) {
-
-#w.all = c(1,rep(0,6))
-print(w.all)
 
 sig.k = length(z.val.input[z.val.input > z.crit & z.val.input < Int.End])
 sig.k
@@ -224,7 +222,8 @@ p.bias.binomial = 1 - pbinom(just.sig.k - 1, sig.k, prob = prob)
 
 return(c(just.sig.k/sig.k,prob,p.bias.binomial))
 
-}
+} #EOF bias test
+
 
 
 ### function to run the zcurve package to get EM weights and fit
@@ -278,6 +277,8 @@ EXT.boot = function()	{
 			### Get Bootstrap Sample
    		  	z.sample = sample(Z.INT, size=length(Z.INT), replace=TRUE)
 
+			print(table(is.na(z.sample)))
+
 			### Submit Bootstrap Sample to Parameter Estimation Function
 
 			if (Show.Iterations) print(paste0("EXT.boot Iteration: ",boot))
@@ -295,13 +296,13 @@ EXT.boot = function()	{
 			ncz
 
 			zsds = para.est.EXT[(2*components+1):(3*components)]
-			zsds = 1 #testing
 			zsds
 
-			para.est.EXT = c(WT,ncz,zsds)
+			cp.input = c(WT,ncz,zsds)
 
-			if (mean(zsds) == 1) cp.res = Compute.Power(para.est.EXT,Int.Beg=Int.Beg,BOOT=TRUE)
-			#if (mean(zsds) != 1) cp.res = Compute.Power.EXT(para.est.EXT)
+			if (mean(zsds) > 1.1) { cp.res = 
+				Compute.Power.SDG1(cp.input,Int.Beg=Int.Beg,BOOT=TRUE)
+			} else { cp.res = Compute.Power(cp.input,Int.Beg=Int.Beg) }
 
 			cp.res
 
@@ -322,7 +323,15 @@ EXT.boot = function()	{
 	
 		CIs = rbind(CIs,quantile(boot.res[,1],c(CI.ALPHA/2,1-CI.ALPHA/2)) )
 
+		CIs[1,1] = CIs[1,1]-ERR.CI.adjust
+		CIs[1,2] = CIs[1,2]+ERR.CI.adjust
+
 		CIs = rbind(CIs,quantile(boot.res[,2],c(CI.ALPHA/2,1-CI.ALPHA/2)) )
+		CIs[2,1] = CIs[2,1]-EDR.CI.adjust
+		CIs[2,2] = CIs[2,2]+EDR.CI.adjust
+
+		FDR = round((1/CIs[2,] - 1)*(alpha/(1-alpha)),2);
+		CIs = rbind(CIs,FDR[2:1])
 
 		CIs = rbind(CIs,quantile(boot.res[,3],c(CI.ALPHA/2,1-CI.ALPHA/2)) )
 
@@ -339,19 +348,14 @@ EXT.boot = function()	{
 			quantile(boot.res[,(3+components*4):(3+(components*5-1))],c(CI.ALPHA/2,1-CI.ALPHA/2)) )
 
 
-		print(CIs)
-
-		CIs[1,1] = CIs[1,1]-ERR.CI.adjust
-		CIs[1,2] = CIs[1,2]+ERR.CI.adjust
-
-		CIs[2,1] = CIs[2,1]-EDR.CI.adjust
-		CIs[2,2] = CIs[2,2]+EDR.CI.adjust
+		#print(CIs)
 
 		colnames(CIs) = c("low","high")
-		rownames(CIs) = c("ERR","EDR","FIT",rep("NCZ",components),
+		rownames(CIs) = c("ERR","EDR","FDR","FIT",rep("NCZ",components),
 			rep("ZSD",components),rep("WALL",components),
 			rep("WSIG",components) )
-		print(CIs)
+
+		#print(CIs)
 
 		return(CIs)
 
@@ -375,28 +379,41 @@ zres = run.zcurve(z.val.input, Est.Method=Est.Method, boot.iter = boot.iter,
 zres
 ERR = summary(zres)$coefficients[1,];ERR
 EDR = summary(zres)$coefficients[2,];EDR
-FDR = round((1/EDR - 1)*(alpha/(1-alpha)),3);FDR
+FDR = (1/EDR - 1)*(alpha/(1-alpha));FDR
+FDR = FDR[c(1,3,2)];FDR
 
-w.all = summary(zres, type="parameters")$coefficients[,2]
-w.all.low = summary(zres, type="parameters")$coefficients[,3]
-w.all.high = summary(zres, type="parameters")$coefficients[,4]
+w.sig = summary(zres, type="parameters")$coefficients[,2]
+w.sig.low = summary(zres, type="parameters")$coefficients[,3]
+w.sig.high = summary(zres, type="parameters")$coefficients[,4]
+
+w.all = w.sig/(pow.dir+sign.error)
+w.all = w.all/sum(w.all)
+w.all
+
+w.all.low = w.sig.low/(pow.dir+sign.error)
+w.all.low = w.all.low/sum(w.all.low)
+w.all.low
+
+w.all.high = w.sig.high/(pow.dir+sign.error)
+w.all.high = w.all.high/sum(w.all.high)
+w.all.high
+
 
 #round(cbind(w.all,w.all.low,w.all.high),3)	  
 
 fit.val = summary(zres)$model$fit_index
 fit.val
 
-res.ci = c(ERR,EDR,FDR,fit.val,w.all,w.all.low,w.all.high)
+w.all = cbind(w.all,w.all.low,w.all.high)
+
+res.ci = rbind(ERR,EDR,FDR,fit.val,w.all)
+res.ci
 
 } 
 
 if (Est.Method == "EXT") {
 
 res.ci = EXT.boot()
-
-FDR = round((1/res.ci[2,2:1] - 1)*(alpha/(1-alpha)),2);FDR
-
-res.ci = rbind(res.ci[1:2,],FDR,res.ci[3:7,])
 
 res.ci
 
@@ -409,84 +426,6 @@ res.ci
 return(res.ci)
 
 }
-
-#################################
-
-test.heterogeneity = function(z.val.input,boot.runs = 500, 
-	fit.ci = c(.01,.025,.05,.10,.17,.20,.50,.80,.83,.90,.95,.975,.99)
-	) {
-
-
-#boot.i = 2; boot.runs = 50
-res.boot = c()
-
-for (boot.i in 1:boot.runs ) {
-	print(boot.i)
-	zboot = sample(z.val.input,replace=TRUE)
-	ncz = 2
-	zsd = 1
-	components = length(ncz)
-	para.est.EXT = extended.zcurve(zboot,ncz,zsd);para.est.EXT
-	fit.hom = para.est.EXT[(3*components+1)];fit.hom
-	ncz = c(1,3)
-	zsd = 1
-	components = length(ncz)
-	para.est.EXT = extended.zcurve(zboot,ncz,zsd);para.est.EXT
-	fit.het.1 = para.est.EXT[(3*components+1)];fit.het.1
-	ncz = 2
-	zsd = 5
-	components = length(ncz)
-	para.est.EXT = extended.zcurve(zboot,ncz,zsd);para.est.EXT
-	fit.het.2 = para.est.EXT[4];fit.het.2
-	sd.het.2 = para.est.EXT[3];sd.het.2
-
-	delta.fit.1 = fit.hom - fit.het.1
-	delta.fit.2 = fit.hom - fit.het.2
-	delta.fit.3 = fit.het.2 - fit.het.1
-
-	res.boot = rbind(res.boot,c(fit.hom,fit.het.1,fit.het.2,sd.het.2,
-		delta.fit.1,delta.fit.2,delta.fit.3))
-	print(res.boot[boot.i,])
-
-} # end of boot
-
-### diagnostics
-if (1 == 2) {
-	dim(res.boot)
-	summary(res.boot)
-	cor(res.boot[,1:3])
-}
-
-fit.hom.ci = quantile(res.boot[,1],fit.ci);fit.hom.ci
-fit.het.1.ci = quantile(res.boot[,2],fit.ci);fit.het.1.ci
-fit.het.2.ci = quantile(res.boot[,3],fit.ci);fit.het.2.ci
-
-sd.het.2.ci = quantile(res.boot[,4],fit.ci);sd.het.2.ci
-
-delta.fit.1.ci = quantile(res.boot[,5],fit.ci);delta.fit.1.ci
-delta.fit.2.ci = quantile(res.boot[,6],fit.ci);delta.fit.2.ci
-delta.fit.3.ci = quantile(res.boot[,7],fit.ci);delta.fit.3.ci
-
-return.res = cbind(
-	fit.hom.ci,fit.het.1.ci,fit.het.2.ci,
-	sd.het.2.ci,
-	delta.fit.1.ci,delta.fit.2.ci,delta.fit.3.ci)
-
-dim(return.res)
-
-colnames(return.res) = c(
-#	"hom.odr","hom.edr","hom.err","hom.fdr",
-	"fit.hom","fit.het.1","fit.het.2",
-	"sd.het.2",	
-	"delta.fit.2-1","delta.fit.3-1","delta.fit.2-3"
-)
-
-print(return.res)
-	
-return(return.res)
-
-}
-
 
 #######################################################################
 
@@ -503,13 +442,13 @@ Write.Local.Power = function(loc.power) {
 #### Begin Draw Histogram
 ###################################################
 
-Draw.Histogram = function(z.draw,w,cola="blue3",
+Draw.Histogram = function(w,cola="blue3",
 	results,Write.CI = FALSE) {
 
 
-	#z.draw = sim.dat$z
+	#z.draw = z.ori
 	#cola="blue3"
-	z.hist = z.draw[z.draw > x.lim.min & z.draw < x.lim.max]
+	z.hist = z.val.input[z.val.input > x.lim.min & z.val.input < x.lim.max]
 	if (round(Int.Beg,2) == 1.96) {
 		z.hist = z.draw[z.draw > x.lim.min & z.draw < x.lim.max -.04] + .04
 	}
@@ -556,9 +495,6 @@ Draw.Histogram = function(z.draw,w,cola="blue3",
 		ylab=,xlab="absolute z-value",main=Title,lwd=1,axes=FALSE)
 
 
-
-
-######################################### 
 ######################################### 
 ######################################### 
 
@@ -574,15 +510,6 @@ hist(c(0),main="",ylim=c(ymin,ymax),ylab="",xlab="",xlim=c(x.lim.min,x.lim.max),
 	#results = res.with.ci
 
 
-	if(TEST4BIAS) p.bias = results[length(results)];p.bias
-
-	results = round(results*100);results
-
-	ODR = results[1];ODR
-	EDR = results[2];EDR
-	ERR = results[3];ERR
-	FDR = results[4];FDR
-	
 	min.z = min(z.draw)
 	max.z = max(z.draw)
 	n.z = length(z.draw)
@@ -634,18 +561,29 @@ hist(c(0),main="",ylim=c(ymin,ymax),ylab="",xlab="",xlim=c(x.lim.min,x.lim.max),
 
 	if (Write.CI) {
 
-	ODR = results[1]
-	ODR.low = results[2]
-	ODR.high = results[3]
-	ERR = results[4]
-	ERR.low = results[5]
-	ERR.high = results[6]
-	EDR = results[7]
-	EDR.low = results[8]
-	EDR.high = results[9]
-	FDR = results[10]
-	FDR.low = results[12]
-	FDR.high = results[11]
+	### results = res.text
+
+	if(TEST4BIAS) { 
+		p.bias = results[5,3]
+		if (p.bias < .00005) bias.res = "EJS, p < .0001" else 
+			bias.res = paste0("EJS, p = ",sub("^0","",formatC(p.bias,format="f",digits=4)))
+		bias.res
+	}	
+
+	results = round(results*100);results
+
+	ODR = results[1,1]
+	ODR.low = results[1,2]
+	ODR.high = results[1,3]
+	ERR = results[2,1]
+	ERR.low = results[2,2]
+	ERR.high = results[2,3]
+	EDR = results[3.1]
+	EDR.low = results[3,2]
+	EDR.high = results[3,3]
+	FDR = results[4.1]
+	FDR.low = results[4,2]
+	FDR.high = results[4,3]
 
 	if (ODR.high > 100) ODR.high = 100
 	#print("Check ERR.low")
@@ -697,8 +635,7 @@ hist(c(0),main="",ylim=c(ymin,ymax),ylab="",xlab="",xlim=c(x.lim.min,x.lim.max),
 
 	if(TEST4BIAS) {
 		i = i + 2
-		text(results.x,y.text-y.line*i,
-			paste0("EJS p = ",sub("^0","",format(round(p.bias,4),nsmall=4))),
+		text(results.x,y.text-y.line*i,bias.res,
 			pos=2,cex=letter.size.1)
 	}
 
@@ -711,6 +648,24 @@ hist(c(0),main="",ylim=c(ymin,ymax),ylab="",xlab="",xlim=c(x.lim.min,x.lim.max),
 	# End of IF CI show.ci.results
 	
 	} else {  
+
+	p.bias = results[5]
+
+	results = round(results*100);results
+
+	ODR = results[1];ODR
+	EDR = results[2];EDR
+	ERR = results[3];ERR
+	FDR = results[4];FDR
+
+	print("pbias")
+	print(p.bias)
+
+	if(TEST4BIAS) { 
+		if (p.bias < .00005) bias.res = "EJS, p < .0001" else 
+			bias.res = paste0("EJS, p = ",sub("^0","",formatC(p.bias,format="f",digits=4)))
+		bias.res
+	}	
 
 	# Witout CI
 	#print("Writing without CI")
@@ -739,10 +694,11 @@ hist(c(0),main="",ylim=c(ymin,ymax),ylab="",xlab="",xlim=c(x.lim.min,x.lim.max),
 		paste("FDR:",FDR.string,"%"),
 		pos=2,cex=letter.size.1) 
 
+
+
 	if(TEST4BIAS) {
 		i = i + 2
-		text(results.x,y.text-y.line*i,
-			paste0("EJS, p = ",sub("^0","",format(round(p.bias,4),nsmall=4))),
+		text(results.x,y.text-y.line*i,bias.res,
 			pos=2,cex=letter.size.1)
 	}
 
@@ -786,7 +742,7 @@ abline(h=0)
 Draw.KD = function(z.draw,w,Write.CI=FALSE,cola="blue",Lwidth=5) {
 
 	#ymin=-.015;ymax = .6
-	#Draw.Histogram(z.val.input,w.all,results=res,cola=col.hist)
+	#Draw.Histogram(w.all,results=res,cola=col.hist)
 
 	#z.draw = z.val.input
 	#cola = "blue"
@@ -1404,7 +1360,7 @@ z.est = c()
 for (i in 1:n.bars) z.est[i] = sum(Dens[,i]*WT)
 z.est = z.est*scale
 
-if (Show.Fitted) Draw.Histogram(z.val.input,WT,
+if (Show.Fitted) Draw.Histogram(WT,
 	results=res,col=col.hist,Write.CI = FALSE)
 
 par(new=TRUE)
@@ -1414,57 +1370,7 @@ lines(Z.Density.X,z.est,lty=1,col=cola,lwd=4,
 
 }
 
-
 ###
-
-if (TESTING | Show.Fitted) {
-
-cp.res = Compute.Power(WT);cp.res;length(cp.res)
-w.all = cp.res[8:(7+components)]
-w.sig = cp.res[15:(14+components)]
-WT
-w.sig
-w.all
-
-Z.Density.X = seq(0,x.lim.max,bar.width)
-
-n.bars = length(Z.Density.X);n.bars
-
-
-Dens	= c()
-for(i in 1:n.bars) {
-	for (j in 1:length(ncz)) {
-		Dens = c(Dens,dnorm(Z.Density.X[i],ncz[j],zsds[j]))
-	}
-}
-Dens = matrix(Dens,length(ncz),byrow=FALSE)
-sum.dens = rowSums(Dens)
-Dens = Dens/(sum.dens * bar.width)
-
-z.est = c()
-for (i in 1:n.bars) z.est[i] = sum(Dens[,i]*w.all)
-summary(z.est)
-sum(z.est*bar.width)
-
-d.hist.sel = mean(as.numeric(z.val.input > x.lim.min & z.val.input > Int.Beg & z.val.input < Int.End)) /
-	mean(as.numeric(z.val.input > x.lim.min & z.val.input < Int.End))
-d.hist.sel
-
-table(Z.Density.X >= Int.Beg)
-d.dense.sel = sum(z.est[Z.Density.X > x.lim.min & Z.Density.X >= Int.Beg]*bar.width)
-d.dense.sel
-
-scale = d.hist.sel/d.dense.sel;scale
-
-par(new=TRUE)
-lines(Z.Density.X,z.est*scale,lty=2,col="red3",lwd=4,
- xlim=c(x.lim.min,x.lim.max),ylim=c(ymin,ymax))
-
-#print("Finished Fitting with Line")
-
-
-} # End of Testing
-
 
 res
 
@@ -1741,7 +1647,7 @@ if (two.sided) {
 
 res.est = c(EDR,EDR.pos,EDR.neg,ERR,ERR.pos,ERR.neg)
 res.est
-res = c(res.est,w.all,w.inp)
+res = c(res.est,w.all,w.sig)
 names(res) = c("EDR","EDR.pos","EDR.neg","ERR","ERR.pos","ERR.neg",
 paste0("w.all.",ncz[1:components]),paste0("w.sig",ncz[1:components]) )
 res
@@ -1803,7 +1709,7 @@ zsds = c(1.1,1.1)
 }
 
 
-Compute.Power.SDG1 = function(para,BOOT=FALSE) {
+Compute.Power.SDG1 = function(para,BOOT=FALSE,Int.Beg=Int.Beg) {
 
 #para = para.est.EXT;para;BOOT=TRUE
 #TEST
@@ -1902,7 +1808,7 @@ EDR.pos = NA
 EDR.neg = NA
 
 ERR.pos = NA
-EDR.neg = NA
+ERR.neg = NA
 
 res.est = c(EDR,EDR.pos,EDR.neg,ERR,ERR.pos,ERR.neg)
 res.est
@@ -1947,7 +1853,7 @@ return(res)
 ### BBB ZingStart #START #Begin of Main Program 
 #####################################
 
-#z.val.input = fig1.zval
+#z.val.input = z.ori
 
 #Zing = function(z.val.input,lp=c() ) {
 
@@ -2063,7 +1969,7 @@ if (Est.Method == "EXT") {
 	zsds
 
 	if (max(zsds) < 1.1) {
-		cp.res = Compute.Power(para.est.EXT)
+		cp.res = Compute.Power(para.est.EXT,Int.Beg=Int.Beg)
 	} else {
 		cp.res = Compute.Power.SDG1(para.est.EXT)
 	}			
@@ -2109,16 +2015,18 @@ if(Est.Method == "EM" & boot.iter == 0) {
 	
 	fit = z.res$fit$Q
 
-	w.all =	 summary(z.res, type="parameters")$coefficients[(components+1):(2*components)]
-	w.all
-
-	cp.res = Compute.Power(para.est.EM,Int.Beg=0)
-
-	w.sig = cp.res[which(substring(names(cp.res),1,5) == "w.sig")]
+	w.sig =	 summary(z.res, type="parameters")$coefficients[(components+1):(2*components)]
 	round(w.sig,3)
 
+	w.all = w.sig/(pow.dir+sign.error)
+	w.all = w.all/sum(w.all)
+	round(w.all,3)
+
+	cp.res = Compute.Power(Int.Beg = 0,c(w.all,ncz,zsds))
+	cp.res
+
 	loc.power = cp.res[which(substring(names(cp.res),1,2) == "lp")]
-	loc.power
+	round(loc.power,3)
 
 	str(z.res)
 	EDR = z.res$coefficients[2];EDR
@@ -2128,7 +2036,10 @@ if(Est.Method == "EM" & boot.iter == 0) {
 } 
 
 
-FDR = round((1/EDR - 1)*(alpha/(1-alpha)),2);FDR
+FDR = round((1/EDR - 1)*(alpha/(1-alpha)),2);
+names(FDR) = "FDR"
+FDR
+
 
 res = c(ODR,EDR,ERR,FDR,fit)
 names(res) = c("ODR","EDR","ERR","FDR","FIT")
@@ -2143,10 +2054,13 @@ names(res) = c("ODR","EDR","ERR","FDR","FIT")
 p.bias = c(NA,NA,NA)
 if(TEST4BIAS) { 
 	p.bias = test.bias(w.all) 
-	res = c(res,p.bias)
 }
+names(p.bias) = c("OBS.JS","EXP.JS","EJS.p")
 #print("bias test")
 #print(p.bias)
+
+res.text = c(res[1:4],p.bias[3])
+res.text
 
 ##########################################
 ### This Code is Used to Create Graphic
@@ -2154,7 +2068,7 @@ if(TEST4BIAS) {
 
 if (Show.Histogram) { 
 
-	Draw.Histogram(z.val.input,w.all,results=res,cola=col.hist)
+	Draw.Histogram(w.all,results=res.text,cola=col.hist)
 
 	if (Show.KD) Draw.KD(z.val.input,w.all,cola=col.kd)
 
@@ -2187,19 +2101,29 @@ if (Show.Histogram) {
 ########################################################################
 ########################################################################
 
-
-
-
-
-
-
 ### If Confidence Intervals are requested, compute CI (boot.iter > 0)
 if (boot.iter > 0 & Est.Method != "EXT") {
 
-	res = get.ci.info(Est.Method = Est.Method)
-	res = c(ODR,ODR.low,ODR.high,res[1:9],p.bias)
-	names(res)[13:15] = c("pbias obs","pbias exp","pbias p")
-	round(res,3)
+	res.ci = get.ci.info(Est.Method = Est.Method)
+	res.ci
+	rownames(res.ci)[5:(4+components)] = rep("w.all",components)
+	round(res.ci,3)
+	w.all
+
+	res.text = rbind(ODR.res,res.ci[1:3,],p.bias)
+	round(res.text,3)
+
+	rownames(res.text) = c("ODR","ERR","EDR","FDR","bias")
+	res.text
+
+	res = c(res,w.all)
+	round(res,3)	 
+	length(res)
+
+	res = cbind(res,res.ci)
+	dim(res)
+	res
+
 }
 
 
@@ -2209,18 +2133,18 @@ if (boot.iter > 0 & Est.Method == "EXT") {
 	res.ci = get.ci.info(Est.Method = Est.Method)
 	res.ci = rbind(c(ODR.low,ODR.high),res.ci)
 	rownames(res.ci)[1] = "ODR"
-	res.ci
+	round(res.ci,3)
 	dim(res.ci)
 
-	res = c(ODR,EDR,ERR,FDR,fit,ncz,zsds,w.all,w.sig)
-	names(res) = rownames(res.ci)
-	length(res)
+	res.text = c(ODR,ERR,EDR,FDR)
+	names(res.text) = c("ODR","ERR","EDR","FDR")
 
-	res = cbind(res,res.ci)
+	res.text = cbind(res.text,res.ci[1:4,])
+	res.text
 
-	res = rbind(res,c(p.bias))
-	rownames(res)[10] = "BIAS"
-	round(res,3)
+	res.text = rbind(res.text,c(p.bias))
+	rownames(res.text)[5] = "BIAS"
+	round(res.text,3)
 
 }
 
@@ -2228,8 +2152,8 @@ if (boot.iter > 0 & Est.Method == "EXT") {
 if (boot.iter > 0) {
 
 	if (Show.Histogram) { 
-		Draw.Histogram(z.val.input,w.all,
-		results=res,cola=col.hist,Write.CI = TRUE)
+		Draw.Histogram(w.all,
+		results=res.text,cola=col.hist,Write.CI = TRUE)
 		if (Show.KD) Draw.KD(z.val.input,w.all,cola=col.kd)
 		if (Show.Zcurve.All) {
 			Draw.Zcurve.All(z.val.input,w=w.all,ncz=ncz,zsds=zsds,cola=col.zcurve,
@@ -2257,11 +2181,6 @@ if (Return.Weights) {
 
 #print(round(res,3))
 
-if (TEST4HETEROGENEITY) {
-	res.het = test.heterogeneity(z.val.input)
-	res = c(res,c(res.het))
-}
-
 return(res)
 
 
@@ -2272,6 +2191,93 @@ return(res)
 ######################################################################
 ######################################################################
 ######################################################################
+
+run.heterogeneity.test = function(z.val.input,boot.run = 500, 
+	fit.ci = c(.01,.025,.05,.10,.17,.20,.50,.80,.83,.90,.95,.975,.99)
+	) {
+
+#boot.i = 2; boot.runs = 50
+res.boot = c()
+
+for (boot.i in 1:boot.run ) {
+	print(boot.i)
+	zboot = sample(z.val.input,replace=TRUE)
+	ncz = 2
+	zsd = 1
+	components = length(ncz)
+	para.est.EXT = extended.zcurve(zboot,ncz,zsd);para.est.EXT
+	fit.hom = para.est.EXT[(3*components+1)];fit.hom
+	ncz = c(1,3)
+	zsd = 1
+	components = length(ncz)
+	para.est.EXT = extended.zcurve(zboot,ncz,zsd);para.est.EXT
+	fit.het.1 = para.est.EXT[(3*components+1)];fit.het.1
+	ncz = 2
+	zsd = 5
+	components = length(ncz)
+	para.est.EXT = extended.zcurve(zboot,ncz,zsd);para.est.EXT
+	fit.het.2 = para.est.EXT[4];fit.het.2
+	sd.het.2 = para.est.EXT[3];sd.het.2
+
+	delta.fit.1 = fit.hom - fit.het.1
+	delta.fit.2 = fit.hom - fit.het.2
+	delta.fit.3 = fit.het.2 - fit.het.1
+
+	res.boot = rbind(res.boot,c(fit.hom,fit.het.1,fit.het.2,sd.het.2,
+		delta.fit.1,delta.fit.2,delta.fit.3))
+	print(res.boot[boot.i,])
+
+} # end of boot
+
+### diagnostics
+if (1 == 2) {
+	dim(res.boot)
+	summary(res.boot)
+	cor(res.boot[,1:3])
+}
+
+fit.hom.ci = quantile(res.boot[,1],fit.ci);fit.hom.ci
+fit.het.1.ci = quantile(res.boot[,2],fit.ci);fit.het.1.ci
+fit.het.2.ci = quantile(res.boot[,3],fit.ci);fit.het.2.ci
+
+sd.het.2.ci = quantile(res.boot[,4],fit.ci);sd.het.2.ci
+
+delta.fit.1.ci = quantile(res.boot[,5],fit.ci);delta.fit.1.ci
+delta.fit.2.ci = quantile(res.boot[,6],fit.ci);delta.fit.2.ci
+delta.fit.3.ci = quantile(res.boot[,7],fit.ci);delta.fit.3.ci
+
+return.res = cbind(
+	fit.hom.ci,fit.het.1.ci,fit.het.2.ci,
+	sd.het.2.ci,
+	delta.fit.1.ci,delta.fit.2.ci,delta.fit.3.ci)
+
+dim(return.res)
+
+colnames(return.res) = c(
+#	"hom.odr","hom.edr","hom.err","hom.fdr",
+	"fit.hom","fit.het.1","fit.het.2",
+	"sd.het.2",	
+	"delta.fit.2-1","delta.fit.3-1","delta.fit.2-3"
+)
+
+return(return.res)
+
+}
+
+TEST4HETEROGENEITY = function(z.val.input,boot.run=500,
+	fit.ci = c(.01,.025,.05,.10,.17,.20,.50,.80,.83,.90,.95,.975,.99) )
+{
+	res.het = run.heterogeneity.test(z.val.input,boot.run=boot.run,fit.ci)
+	print(res.het)
+	return(res.het[,4:5])
+}
+
+#TESTING: test.res = TEST4HETEROGENEITY(z.val.input,50);round(test.res,3)
+
+######################################################################
+######################################################################
+######################################################################
+
 
 zcurve.es.estimation = function(N,pow) {
 
