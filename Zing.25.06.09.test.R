@@ -107,7 +107,7 @@ fit.crit.EM = .006
 ERR.CI.adjust = .03
 EDR.CI.adjust = .05
 
-MAX.INP.Z = 100
+MAX.INP.Z = Inf
 
 Plot.Fitting = FALSE
 BOOT = FALSE
@@ -446,17 +446,17 @@ Draw.Histogram = function(w,cola="blue3",
 	results,Write.CI = FALSE) {
 
 
-	#z.draw = z.ori
+	#Testing: z.val.input = z.rep
 	#cola="blue3"
 	z.hist = z.val.input[z.val.input > x.lim.min & z.val.input < x.lim.max]
 	if (round(Int.Beg,2) == 1.96) {
-		z.hist = z.draw[z.draw > x.lim.min & z.draw < x.lim.max -.04] + .04
+		z.hist = z.val.input[z.val.input > x.lim.min & z.draw < x.lim.max -.04] + .04
 	}
-	z.hist
+	table(z.hist > 1.96)
 
 	scale = 
-	length(z.draw[z.draw > x.lim.min & z.draw < x.lim.max]) /
-	length(z.draw[z.draw > x.lim.min & z.draw < x.lim.max])
+	length(z.val.input[z.val.input > x.lim.min & z.val.input < x.lim.max]) /
+	length(z.val.input[z.val.input > x.lim.min & z.val.input < x.lim.max])
 	scale
 
 	Int.Beg
@@ -482,8 +482,8 @@ Draw.Histogram = function(w,cola="blue3",
 
 
 	scale = 
-	length(z.draw[z.draw > Int.Beg & z.draw < Int.End]) /
-	length(z.draw[z.draw > x.lim.min & z.draw < x.lim.max])
+	length(z.val.input[z.val.input > Int.Beg & z.val.input < Int.End]) /
+	length(z.val.input[z.val.input > x.lim.min & z.val.input < x.lim.max])
 	scale
 
 	#n.breaks = seq(round(Int.Beg,1),x.lim.max,hist.bar.width);n.breaks
@@ -510,11 +510,11 @@ hist(c(0),main="",ylim=c(ymin,ymax),ylab="",xlab="",xlim=c(x.lim.min,x.lim.max),
 	#results = res.with.ci
 
 
-	min.z = min(z.draw)
-	max.z = max(z.draw)
-	n.z = length(z.draw)
-	n.z.sig = length(z.draw[z.draw > z.crit])
-	n.not.shown = length(z.draw[z.draw > x.lim.max])
+	min.z = min(z.val.input)
+	max.z = max(z.val.input)
+	n.z = length(z.val.input)
+	n.z.sig = length(z.val.input[z.val.input > z.crit])
+	n.not.shown = length(z.val.input[z.val.input > x.lim.max])
 
 	### set location parameters for writing text
 	y.line.factor 
@@ -1853,7 +1853,7 @@ return(res)
 ### BBB ZingStart #START #Begin of Main Program 
 #####################################
 
-#z.val.input = z.ori
+#z.val.input = z.rep
 
 #Zing = function(z.val.input,lp=c() ) {
 
