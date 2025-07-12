@@ -3,12 +3,14 @@
 ### Install required packages (only needs to be done once)
 install.packages(c("zcurve","KernSmooth","stringr","parallel"))
 
-### Set working directory to the folder containing the zcurve.3.0 function
-setwd("C:\\Users\\ulric\\Dropbox\\PHPCurves\\R-Code\\")
 
-### Rename the zcurve function -> zcurve3 and run the code
-### I use = instead of ->
-zcurve3 = "Zing.25.06.09.test.R"
+# Load z-curve function from a local file
+setwd("C:/Users/ulric/Dropbox/PHPCurves/DOCS/z-curve/Tutorial")
+zcurve3 <- "Zing.25.07.11.test.R"
+source(zcurve3)
+
+# Alternatively, load z-curve function directly from GitHub
+zcurve3 <- "https://raw.githubusercontent.com/UlrichSchimmack/zcurve3.0/refs/heads/main/Zing.25.07.11.test.R"
 source(zcurve3)
 
 ### 

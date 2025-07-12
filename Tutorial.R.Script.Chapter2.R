@@ -1,12 +1,16 @@
 ### Install required packages (only needs to be done once)
 install.packages(c("zcurve", "KernSmooth", "stringr", "parallel"))
 
-### Set working directory to the folder containing the zcurve3.0 function
-setwd("C:\\Users\\ulric\\Dropbox\\PHPCurves\\DOCS\\z-curve\\Tutorial")
 
-### Load the zcurve function fron github (renamed as zcurve3)
-zcurve3 = "https://raw.githubusercontent.com/UlrichSchimmack/zcurve3.0/refs/heads/main/Zing.25.06.09.test.R"
+# Load z-curve function from a local file
+setwd("C:/Users/ulric/Dropbox/PHPCurves/DOCS/z-curve/Tutorial")
+zcurve3 <- "Zing.25.07.11.test.R"
 source(zcurve3)
+
+# Alternatively, load z-curve function directly from GitHub
+zcurve3 <- "https://raw.githubusercontent.com/UlrichSchimmack/zcurve3.0/refs/heads/main/Zing.25.07.11.test.R"
+source(zcurve3)
+
 
 ###############################################################
 ### Chapter 2 – Analyzing the OSC Reproducibility Project
