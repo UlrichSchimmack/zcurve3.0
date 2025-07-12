@@ -1,196 +1,168 @@
 
+########################################################################
+### SETTING PARAMETERS FOR Z-CURVE MODEL
+########################################################################
 
-#rm(list = ls())
+# Optional cleanup 
+# rm(list = ls())
+# options(scipen = 999)  # Disable scientific notation
 
-#options(scipen = 999)
+### INSTALL PACKAGES (only once – manually run if needed)
+if (1 == 2) {  # This block is ignored unless manually changed to (1 == 1)
+  install.packages("pwr")
+  install.packages("zcurve")
+  install.packages("KernSmooth")
+  install.packages("parallel")
+  install.packages("stringr")
+} # END install block
 
-#install.packages("pwr")
-#install.packages("zcurve")
-#install.packages("KernSmooth")
-
-#install.packages("extrafont")
-#install.packages("showtext")
-
+### LOAD LIBRARIES
 library(parallel)
 library(KernSmooth)
 library(zcurve)
 library(stringr)
 library(pwr)
 
-#library(extrafont)
-#library(showtext)
-#cl <- parallel::makeCluster(parallel::detectCores() - 10)
+# Optional: Setup parallel processing (currently not functional)
+# cl <- parallel::makeCluster(parallel::detectCores() - 10)
 
 
-#setwd("C:\\Users\\ulric\\Dropbox\\PHPCurves\\R-Code\\JetBrainsMono-2.304\\fonts\\ttf\\")
-#font_add("JetBrains","JetBrainsMono-Medium.ttf")
-#font_add("JetBrains","JetBrainsMono-Regular.ttf")
-#par(family = "JetBrainsMonoNL")
-#par(family = "JetBrainsMono")
-#par(family = "mono")
+########################################################################
+### GLOBAL PARAMETERS
+########################################################################
 
-#### Start Default Settings
-#### Gobal Variables Can be Changed in R-Code Anywhere
+TESTING <- FALSE             # Toggle for development/debugging mode
 
-TESTING = FALSE
+### SPEED CONTROL
 
-#windowsFonts()
+parallel <- TRUE             # Placeholder – parallel functionality not yet implemented
+max_iter <- 1e6              # Max iterations for model estimation
+max_iter_boot <- 1e5         # Max iterations for bootstrapped estimates
 
-#fam = c("mono", "mono")
-#fam = c("mono", "Monotype Corsiva")
-#fam = c("Microsoft Himalaya","Monotype Corsiva")
-#fam = rep("Microsoft Himalaya",2);fam
-#fam = c("Cancadia Mono SemiBold","JetBrainsMono")
+EM.criterion <- 1e-3         # Convergence threshold for EM algorithm
+EM.max.iter <- 1000          # Max iterations for EM
 
-letter.size = 1
-letter.size.1 = letter.size
+Plot.Fitting <- FALSE        # Plot fitting curve (only for Est.Method = "OF" or "EXT")
 
-Title = ""
+### PLOT SETTINGS
 
-version = "Version 25.06"
+version <- "Version 25.06"   # Version label to appear on plots
+Title <- ""                  # Optional plot title
 
-alpha = .05
-z.crit = qnorm(1-alpha/2)
+letter.size <- 1             # Text size in plots
+letter.size.1 <- letter.size # Used for version labels in plot
+y.line.factor <- 3           # Controls spacing of plot text
 
-two.sided = TRUE
-#two.sided == FALSE means one-sided tests in both directions
+x.lim.min <- 0               # X-axis lower bound
+x.lim.max <- 6               # X-axis upper bound
+ymax <- 0.6                  # Y-axis upper bound
+ymin <- -ymax / 15           # Y-axis lower bound (for label space)
 
-### settings
-x.lim.min = 0
-x.lim.max = 6
+Show.Histogram <- TRUE       # Toggle histogram in plot
+Show.Text <- TRUE            # Toggle model results in plot
+Show.Zcurve.All <- TRUE      # Show predicted z-curve
+Show.Zcurve.Sig <- FALSE     # Option: show z-curve only for significant values
+Show.Significance <- TRUE    # Show z = critical value line
+Show.KD <- FALSE             # Toggle kernel density overlay (density method only)
 
-fixed.false.positives = 0
+sig.levels <- c()            # Optional: mark additional p-value thresholds on plot
 
-Int.Beg = z.crit
-Int.End = x.lim.max
-Int.Ext = Int.End
+int.loc <- 0.5               # Plot local power intervals below x-axis (set 0 to disable)
+hist.bar.width <- 0.2        # Width of histogram bars
+bw.draw <- 0.10              # Smoothing for kernel density display
 
-ncz.int = 1
-ncz = seq(0,Int.End,ncz.int);ncz
-components = length(ncz)
-zsd = 1
-SD.FIXED = TRUE
+### CONSOLE OUTPUT
 
-lowlim = c(rep(0,length(ncz)),ncz,rep(1,length(ncz)));lowlim
-highlim = c(rep(1,length(ncz)),ncz,rep(1,length(ncz)));lowlim
+Show.Iterations <- TRUE      # Show iterations for slow procedures (e.g., EXT, TEST4HETEROGENEITY)
 
+### MODEL PARAMETERS
 
-### is used for the point estimate
-max_iter = 1e6
-max_iter_boot = 1e5
+alpha <- 0.05                        # Significance level
+z.crit <- qnorm(1 - alpha / 2)       # Corresponding two-sided critical z
 
-fast_iter = max_iter
+two.sided <- TRUE                   # Assume two-sided z-values (use abs(z)); not yet compatible with signed z-values
 
-### faster iteration for bootstrap
-fast_iter_boot = 1e4
+# Color scheme
+col.zcurve <- "violetred3"
+col.hist <- "blue3"
+col.kd <- "black"
 
-bw.draw = .10
-bw.est = .05
+Est.Method <- "OF"                  # Estimation method: "OF", "EM", or "EXT"
+Int.Beg <- z.crit                   # Start of modeling interval (default = critical z)
+Int.End <- 6                        # End of modeling interval (z > 6 = power = 1)
 
+ncz <- 0:6                          # Component locations (z-values at which densities are centered)
+components <- length(ncz)           # Number of components
+zsd <- 1                            # SD of standard normal z-distribution
 
-y.line.factor = 3
+just <- 0.6                         # Cutoff for "just significant" z-values (used in optional bias test)
 
-ymax = .6
-ymin = -ymax/15;ymin
+SD.FIXED <- TRUE                    # Fix SD values for EXT method (recommended)
 
-tiva.x = 1.9
+fixed.false.positives <- 0          # If > 0, constrains proportion of false positives (e.g., weight for z = 0 component)
 
-int.loc = .5
+### DENSITY-BASED SETTINGS (Only used with Est.Method = "OF")
 
-### resolution of density function (doesn't seem to matter much)	
-n.bars = 512
+n.bars <- 512                       # Number of bars in histogram
 
-fit.crit = .02
-fit.crit.BKD = .01
-fit.crit.EM = .006
+Augment <- TRUE                     # Apply correction for bias at lower bound
+Augment.Factor <- 1.4               # Amount of augmentation
+Augment.bw <- 0.20                  # Smoothing bandwidth for augmentation
 
-ERR.CI.adjust = .03
-EDR.CI.adjust = .05
+bw.est <- 0.05                      # Bandwidth for kernel density (lower = less smoothing, higher = more smoothing)
 
-MAX.INP.Z = Inf
+### INPUT RESTRICTIONS
 
-Plot.Fitting = FALSE
-BOOT = FALSE
+MAX.INP.Z <- Inf                    # Optionally restrict very large z-values (set Inf to disable)
 
-FAST.BOOT = TRUE
+### CONFIDENCE INTERVALS / BOOTSTRAPS
 
-Show.Fitted = FALSE
-Show.Histogram = TRUE
-Show.Zcurve.All = TRUE
-Show.Zcurve.Sig = FALSE
-Show.KD = FALSE
-Show.Text = TRUE
-Show.Iterations = TRUE
-Show.Significance = TRUE
+boot.iter <- 0                      # Number of bootstrap iterations (suggest 500+ for final models)
+ERR.CI.adjust <- 0.03               # Conservative widening of confidence intervals for ERR
+EDR.CI.adjust <- 0.05               # Conservative widening for EDR
 
-WRITE.ADJ.Z = FALSE
+CI.ALPHA <- 0.05                    # CI level (default = 95%)
 
-sig.levels = c()
+### CI levels for Heterogeneity Test
+fit.ci <- c(.01, .025, .05, .10, .17, .20, .50, .80, .83, .90, .95, .975, .99)  # CI levels for model fit test
 
-col.zcurve = "violetred3"
-col.hist = "blue3"
-col.kd = "black"
+TEST4BIAS <- FALSE                  # Enable optional bias test
+TEST4HETEROGENEITY <- 0             # Optional heterogeneity test (slow) — set number of bootstrap iterations
 
+### DISPLAY FINAL STATUS
 
-Augment = TRUE
-Augment.Factor = 1.4
-Augment.bw = .20
-
-USE.SLOPE = FALSE
-SLOPE.crit = 1
-slope.width = .5
-
-hist.bar.width = .2
-
-Return.Weights = TRUE
-
-Est.Method = "OF"
-#Est.Method = "EM"
-
-boot.iter = 0
-
-TEST4HETEROGENEITY = 0
-
-EM.criterion = 1e-3
-EM.max.iter = 1000
-
-parallel = TRUE
-
-CI.ALPHA = .05
-
-fit.ci = c(.01,.025,.05,.10,.17,.20,.50,.80,.83,.90,.95,.975,.99)
-
-
-TEST4BIAS = FALSE
-just = .6 ### ~ p = .01 two-tailed
-
-print("Zing 25.06.09.test")
+print(version)
 print("Parameter OK")
-print(ncz)
-
-###################################################
-#### End of Default Settings
-###################################################
 
 
-###################################################
-#### Include Functions in Zing 
-###################################################
+##################################################################
+### END OF SETTING DEFAULT PARAMETERs
+##################################################################
+
+
+##################################################################
+##################################################################
+### AAA Start of Zing Code
+##################################################################
+##################################################################
 
 Zing = function(z.val.input,lp=c() ) {
 
-#######################################################################
-#######################################################################
-### AAA Start Functions
-#######################################################################
+
+##################################################################
+
+### Functions used in Zing
+
 #######################################################################
 
+
+### FUN.1 - HETEROGENEITY TEST
 
 run.heterogeneity.test = function(z.val.input,boot.run = 500, 
 	fit.ci = c(.01,.025,.05,.10,.17,.20,.50,.80,.83,.90,.95,.975,.99)
 	) {
 
-#boot.i = 2; boot.runs = 50
+
 res.boot = c()
 
 for (boot.i in 1:boot.run ) {
@@ -221,14 +193,7 @@ for (boot.i in 1:boot.run ) {
 		delta.fit.1,delta.fit.2,delta.fit.3))
 	print(res.boot[boot.i,])
 
-} # end of boot
-
-### diagnostics
-if (1 == 2) {
-	dim(res.boot)
-	summary(res.boot)
-	cor(res.boot[,1:3])
-}
+} # EOF boot iterations
 
 fit.hom.ci = quantile(res.boot[,1],fit.ci);fit.hom.ci
 fit.het.1.ci = quantile(res.boot[,2],fit.ci);fit.het.1.ci
@@ -248,7 +213,6 @@ return.res = cbind(
 dim(return.res)
 
 colnames(return.res) = c(
-#	"hom.odr","hom.edr","hom.err","hom.fdr",
 	"fit.hom","fit.het.1","fit.het.2",
 	"sd.het.2",	
 	"delta.fit.2-1","delta.fit.3-1","delta.fit.2-3"
@@ -258,13 +222,6 @@ return(return.res)
 
 } # EOF run.heterogeneity.test
 
-
-if (TEST4HETEROGENEITY > 0) {
-	boot.run = TEST4HETEROGENEITY
-	res.het = run.heterogeneity.test(z.val.input,boot.run=boot.run,fit.ci)
-	print(round(res.het,3))
-	res = res.het[,c(4,5,7)]
-	}
 
 
 ##############################################################
@@ -482,7 +439,7 @@ w.all.low = w.inp.low/(pow.sel)
 w.all.low = w.all.low/sum(w.all.low)
 round(w.all.low,3)
 
-w.all.hihg = w.all.high/sum(w.all.high)
+w.inp.high = w.inp.high/sum(w.inp.high)
 w.all.high = w.inp.high/(pow.sel)
 w.all.high = w.all.high/sum(w.all.high)
 w.all.high
@@ -1270,7 +1227,7 @@ densy[densy[,1] > 5.8,]
 
 
 #######################################################
-### Begin Old Fashioned Fast Zcurve 
+### Begin Old Fashioned Zcurve (Est.Method = "OF" 
 #######################################################
 
 old.fashioned.zcurve = function(z.val.input,cola = "springgreen2") {
@@ -1303,7 +1260,7 @@ rmse = sqrt(mean((z.est-Z.Density.Y)^2))
 value = rmse
 if(RetEst) value = z.est
 
-### showing the fitting of the function in a plot
+
 ### showing the fitting of the function in a plot
 if(Plot.Fitting) {
 
@@ -1473,10 +1430,9 @@ return(res)
 
 
 
-#######################################################
-### extended.zcurve allows for free M and SD parameters
-### slower!!!
-#######################################################
+################################################################
+### USE EXTENDED Z-CURVE (Est.Method = "EXT"  (slower than OF)
+################################################################
 
 extended.zcurve = function(z.val.input,ncz,zsd) {
 
@@ -1518,7 +1474,7 @@ rmse = sqrt(mean((z.est-Z.Density.Y)^2))
 value = rmse
 if(RetEst) value = z.est
 
-### showing the fitting of the function in a plot
+
 ### showing the fitting of the function in a plot
 if(Plot.Fitting) {
 
@@ -1990,8 +1946,8 @@ ODR.high = round((ODR+1.96*ODR.se),2);ODR.high
 ODR.res = c(ODR,ODR.low,ODR.high)
 
 z.extreme = c(
-	length(z.val.input[z.val.input < -Int.Ext])/length(z.val.input),
-	length(z.val.input[z.val.input > Int.Ext])/length(z.val.input)
+	length(z.val.input[z.val.input < -Int.End])/length(z.val.input),
+	length(z.val.input[z.val.input > Int.End])/length(z.val.input)
 )
 names(z.extreme) = c("Ext.Neg","Ext.Pos")
 (z.extreme*100)
@@ -2005,7 +1961,7 @@ names(z.extreme) = c("Ext.Neg","Ext.Pos")
 
 ### OLD FASHIONED Z-CURVE 
 
-if (Est.Method == "OF" | TEST4HETEROGENEITY > 0) {
+#if (Est.Method == "OF" | TEST4HETEROGENEITY > 0) {
 
 #print("Fitting Old Fashioned")
 
@@ -2037,7 +1993,7 @@ loc.power
 
 #print("Finish Old Fashioned")
 
-}
+#}
 
 #########################################
 ### EXTENDED Z-CURVE
@@ -2198,6 +2154,13 @@ if (Show.Histogram) {
 ########################################################################
 ########################################################################
 
+res.het = NA
+if (TEST4HETEROGENEITY > 0) {
+	boot.run = TEST4HETEROGENEITY
+	res.het = run.heterogeneity.test(z.val.input,boot.run=boot.run,fit.ci)
+	}
+
+
 ### code for confidence intervals 
 
 ########################################################################
@@ -2273,16 +2236,17 @@ if (boot.iter > 0) {
 
 } # End of boot.iter condition
 
-### return results for further analysis 
-if (Return.Weights) {
-	w.all
-	names(ncz) = paste0("ncz.",ncz)
-	names(zsds) = rep(zsd,components)
-	res = c(res,ncz,zsds,w.all);length(res)
-}
 
 print(round(res,3))
 
+return(list(
+    res = res,
+    ncz = ncz,
+    zsds = zsds,
+    w.all = w.all,
+    bias = p.bias,
+    fit.comp = res.het
+  ))
 return(res)
 
 } #End of Zing
