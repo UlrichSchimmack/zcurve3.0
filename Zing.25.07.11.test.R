@@ -35,7 +35,7 @@ TESTING <- FALSE             # Toggle for development/debugging mode
 
 ### SPEED CONTROL
 
-parallel <- TRUE             # Placeholder – parallel functionality not yet implemented
+parallel <- FALSE            # Placeholder – parallel functionality not yet implemented
 max_iter <- 1e6              # Max iterations for model estimation
 max_iter_boot <- 1e5         # Max iterations for bootstrapped estimates
 
@@ -277,10 +277,6 @@ return(c(just.sig.k/sig.k,prob,p.bias.binomial))
 run.zcurve = function(Est.Method = "OF",kd.model="KD2",K=6,
 	alpha = .05,Int.Beg = 1.96,Int.End = 6, boot.iter = 0,parallel=TRUE) {
 
-	print("RUNNING ZCURVE")
-	print(Est.Method)
-	print(parallel)
-
 	if (Est.Method == "OF") {
 		z.res = zcurve(z.val.input,bootstrap=boot.iter,method="density",
 			control=list(parallel = parallel,
@@ -416,6 +412,7 @@ if (Est.Method %in% c("OF","EM")) {
 zres = run.zcurve(z.val.input, Est.Method=Est.Method, boot.iter = boot.iter,
 	Int.Beg = Int.Beg, Int.End = Int.End,parallel=parallel)
 
+zres
 ERR = summary(zres)$coefficients[1,];ERR
 EDR = summary(zres)$coefficients[2,];EDR
 FDR = (1/EDR - 1)*(alpha/(1-alpha));FDR
@@ -489,6 +486,7 @@ Write.Local.Power = function(loc.power) {
 Draw.Histogram = function(w,cola="blue3",
 	results,Write.CI = FALSE) {
 
+	#w = w.all;cola = "blue3"; results = res.text
 
 	#Testing: z.val.input = z.rep
 	#cola="blue3"
@@ -550,10 +548,6 @@ par(new=TRUE)
 hist(c(0),main="",ylim=c(ymin,ymax),ylab="",xlab="",xlim=c(x.lim.min,x.lim.max),
 	density=0,border="white",axes=FALSE)
 
-	#results = res
-	#results = res.with.ci
-
-
 	min.z = min(z.val.input)
 	max.z = max(z.val.input)
 	n.z = length(z.val.input)
@@ -575,11 +569,13 @@ hist(c(0),main="",ylim=c(ymin,ymax),ylab="",xlab="",xlim=c(x.lim.min,x.lim.max),
 
 	########
 
+	#TESTING
+	#Write.CI = TRUE;results=res.text;Show.Text = FALSE; Draw.Histogram(w.all,results=res.text,cola=col.hist)
+
+	results
+
 	i = 0
-
 	results.x = x.lim.max 
-
-
 
 #	text(results.x,y.text-y.line*i,paste0("Range: ",
 #		round(min.z,2)," to ",round(max.z,2)),
@@ -614,6 +610,7 @@ hist(c(0),main="",ylim=c(ymin,ymax),ylab="",xlab="",xlim=c(x.lim.min,x.lim.max),
 		bias.res
 	}	
 
+	results = round(results,2)
 	results = round(results*100);results
 
 	ODR = results[1,1]
@@ -640,58 +637,55 @@ hist(c(0),main="",ylim=c(ymin,ymax),ylab="",xlab="",xlim=c(x.lim.min,x.lim.max),
 		paste0(round((1-CI.ALPHA)*100),"% CI     "),
 		pos=2,cex=letter.size.1)
 
-	i = i + 2
+	x.loc = results.x + c(-1.5,-1.1,-1.0,-.6,-.5,-.1,0)
 
 	ODR.a = str_pad(round(ODR), width = 3, pad = " ");ODR.a
 	ODR.b = str_pad(round(ODR.low), width = 3, pad = " ");ODR.b
 	ODR.c = str_pad(round(ODR.high), width = 3, pad = " ");ODR.c
-	text(results.x,y.text-y.line*i,
-		paste0("ODR: ",ODR.a,"% [",	ODR.b,"%;",ODR.c,"%]")
-		,pos=2,cex=letter.size.1)
-
-	i = i + 2
 
 	EDR.a = str_pad(round(EDR), width = 3, pad = " ");EDR.a
 	EDR.b = str_pad(round(EDR.low), width = 3, pad = " ");EDR.b
 	EDR.c = str_pad(round(EDR.high), width = 3, pad = " ");EDR.c
-	text(results.x,y.text-y.line*i,
-		paste0("EDR: ",EDR.a,"% [",EDR.b,"%;",EDR.c,"%]")
-		,pos=2,cex=letter.size.1)
-
-	i = i + 2
 
 	ERR.a = str_pad(round(ERR), width = 3, pad = " ");ERR.a
 	ERR.b = str_pad(round(ERR.low), width = 3, pad = " ");ERR.b
 	ERR.c = str_pad(round(ERR.high), width = 3, pad = " ");ERR.c
-	text(results.x,y.text-y.line*i,
-		paste0("ERR: ",ERR.a,"% [",ERR.b,"%;",ERR.c,"%]")
-		,pos=2,cex=letter.size.1)
-
-
-	i = i + 2
 
 	FDR.a = str_pad(round(FDR), width = 3, pad = " ");FDR.a
 	FDR.b = str_pad(round(FDR.low), width = 3, pad = " ");FDR.b
 	FDR.c = str_pad(round(FDR.high), width = 3, pad = " ");FDR.c
-	text(results.x,y.text-y.line*i,
-		paste0("FDR: ",FDR.a,"% [",FDR.b,"%;",FDR.c,"%]")
-		,pos=2,cex=letter.size.1)
 
-	if(TEST4BIAS) {
-		i = i + 2
-		text(results.x,y.text-y.line*i,bias.res,
-			pos=2,cex=letter.size.1)
+	res4text = c()
+	res4text = rbind(res4text,c("ODR: ","EDR: ","ERR :","FDR :"))
+	res4text = rbind(res4text,c(ODR.a,EDR.a,ERR.a,FDR.a))
+	res4text = rbind(res4text,rep("[",4))
+	res4text = rbind(res4text,c(ODR.b,EDR.b,ERR.b,FDR.b))
+	res4text = rbind(res4text,rep(",",4))
+	res4text = rbind(res4text,c(ODR.c,EDR.c,ERR.c,FDR.c))
+	res4text = rbind(res4text,rep("]",4))
+
+	dim(res4text)
+	res4text
+
+	x.i = 1
+	for (x.i in 1:length(x.loc)) {
+		for (ii in 1:4) {
+			text(x.loc[x.i],y.text-y.line*(i+2*ii),res4text[x.i,ii]
+			,pos=2,cex=letter.size.1)
+		}
 	}
 
+	if(TEST4BIAS) {
+		i = i + 10
+		text(results.x,y.text-y.line*i,bias.res,
+			pos=2,cex=letter.size.1)
+		}
 
-#	i = i + 2
-#	text(results.x,y.text-y.line*i,
-#		paste0("OSR:   ",	OSR,"%   [ ",OSR.low,"% ; ",OSR.high,"% ]")
-#		,pos=2,cex=letter.size)
 
-	# End of IF CI show.ci.results
-	
+	# End of IF CI show results with CI
 	} else {  
+	# End of IF CI show results without CI
+
 
 	p.bias = results[5]
 
@@ -872,84 +866,47 @@ Draw.KD = function(z.draw,w,Write.CI=FALSE,cola="blue",Lwidth=5) {
 #### Begin Draw Zcurve
 ###################################################
 
-Draw.Zcurve.All.SDG1 = function(w.inp,ncz=ncz,zsds=zsds,cola="black",
-	Ltype=1,Lwidth=3,x.start=x.lim.min,x.end=x.lim.max) {
+Draw.Zcurve.All.SDG1 = function(w.inp,ncz=ncz,zsds=zsds,cola=col.zcurve,
+	Ltype=1,Lwidth=4,x.start=x.lim.min,x.end=x.lim.max) {
+
 
 components = length(ncz)
 
-nczs = seq(x.lim.min,x.lim.max,.5)
-pows = pnorm(nczs,z.crit) + pnorm(-nczs,z.crit)
-cbind(nczs,pows)
-
-comp.i = 1
-set = c()
-
-for (comp.i in 1:components) {
-	w.nczs = dnorm(nczs,ncz[comp.i],zsds[comp.i]-1) 
-	w.nczs = w.nczs/sum(w.nczs)
-	#plot(nczs,w.nczs)
-	subset = data.frame(nczs,pows,w.nczs)
-	subset = subset[round(w.nczs,4) > 0,]
-	subset$w.nczs = subset$w.nczs / sum(subset$w.nczs)
-	subset$comp.i = comp.i
-	subset$w.inp = w.inp[comp.i] 
-	set = rbind(set,subset)
+if (components == 1) { 
+	zx = seq(x.lim.min,x.lim.max,.01)
+	zy = dnorm(zx,ncz,zsds)
+	d.sim = cbind(zx,zy)
+} else {
+	k.sim = 40000
+	sim.z = c()
+	for (i in 1:components) sim.z = c(sim.z,
+			rnorm(w.inp[i]*k.sim,ncz[i],zsds[i]))
+	d.sim = Get.Densities(sim.z[sim.z >= x.lim.min-.5 & sim.z < x.lim.max+.5],
+		bw=bw.draw,d.x.min=x.lim.min,d.x.max=x.lim.max,Augment=Augment)
 }
-dim(set)
+dim(d.sim)
 
-set$w.all = set$w.inp/set$pows
-set$w.all = set$w.all/sum(set$w.all)
-set$w.all
+bar.width = d.sim[2,1] - d.sim[1,1];bar.width
+d.sim = d.sim[d.sim[,1] > x.lim.min & d.sim[,1] <= x.lim.max,]
+dim(d.sim)
+d.sim[,2] = d.sim[,2]/(sum(d.sim[,2])*bar.width)
+sum(d.sim[,2])*bar.width
 
-set
+d.sim.X = d.sim[,1]
+d.sim.Y = d.sim[,2]
 
-z.x.i = 1
-z.y = c()
-for (z.x.i in 1:length(z.x)) {
-	w = set$w.nczs * set$w.all
-	w = w / sum(w)
-	z.y = c(z.y,sum(dnorm(z.x[z.x.i],set$nczs)*w)/sum(w) )
-} 
-z.y
+summary(d.sim.X)
+sum(d.sim.Y*bar.width)
 
-#plot(z.x,z.y)
+#hist.bar.width = .2
+#Draw.Histogram(w.all,results=res.text,cola=col.hist,Write.CI = TRUE)
 
-z.y = z.y/sum(z.y*bar.width)
-
-Z.Density.X = z.x
-z.est = z.y
-
-sum(z.est*bar.width)
-
-#plot(Z.Density.X,z.est)
-
-#############################
-
-d.hist.sel = mean(as.numeric(z.val.input > x.lim.min & z.val.input > Int.Beg & z.val.input < Int.End)) /
-	mean(as.numeric(z.val.input > x.lim.min & z.val.input < Int.End))
-d.hist.sel
-
-table(Z.Density.X >= Int.Beg)
-d.dense.sel = sum(z.est[Z.Density.X > x.lim.min & Z.Density.X >= Int.Beg]*bar.width)
-d.dense.sel
-
-cbind(Z.Density.X,z.est)
-
-scale = d.hist.sel/d.dense.sel;scale
-
+### draw the density of the observed values in the selected region
 par(new=TRUE)
-
-lines(Z.Density.X[which(Z.Density.X >= x.start & Z.Density.X < x.end)],
-	z.est[which(Z.Density.X >= x.start & Z.Density.X < x.end)]*scale,
-	lty=Ltype,col=cola,lwd=4,xlim=c(x.lim.min,x.lim.max),ylim=c(ymin,ymax))
-
-z.boundary = Int.Beg
-if (round(Int.Beg,2) == 1.96) {z.boundary = 2}
-
-Z.Density.X	
-segments(z.boundary,0,z.boundary,
-	z.est[which(round(Z.Density.X,2) == round(z.boundary,2))[1]]*scale,
-	col=cola,lwd=3)
+plot(d.sim.X[d.sim.X > x.start & d.sim.X < x.end],
+	d.sim.Y[d.sim.X > x.start & d.sim.X < x.end],
+	type="l",col=cola,lty=Ltype,lwd=Lwidth,
+	xlim =c(x.lim.min,x.lim.max),ylim=c(ymin,ymax),xlab="",ylab="")
 
 
 if (Show.Significance) {
@@ -964,24 +921,24 @@ if (Show.Significance) {
 		i = 1
 		for (i in 1:length(cz.alpha)) {
 			cz.alpha[i]
-			height = max(scale*z.est[which(round(Z.Density.X,1) == round(cz.alpha[i],1))]);height
+			height = max(d.sim.Y[which(round(d.sim.X,1) == round(cz.alpha[i],1))]);height
 			segments(cz.alpha[i],0,cz.alpha[i],height,lty=sig.lty,lwd=2,col="firebrick3")
 		}
 
 } # End of Show.Significance
 
 
+
 } # End of Draw.Zcurve.SDG1
 
-################################################
-################################################
-################################################
+###################################################
+
 
 ###################################################
 #### Begin Draw Zcurve
 ###################################################
 
-Draw.Zcurve.All = function(z.val.input,w,ncz,zsds,cola="black",Lwidth=3,
+Draw.Zcurve.All = function(z.val.input,w,ncz,zsds,cola="black",Lwidth=4,
 	Ltype=1,x.start=x.lim.min,x.end=x.lim.max) {
 
 print("Draw.Zcurve.All")
@@ -1034,7 +991,7 @@ scale = d.hist.sel/d.dense.sel;scale
 
 lines(Z.Density.X[which(Z.Density.X >= x.start & Z.Density.X < x.end)],
 	z.est[which(Z.Density.X >= x.start & Z.Density.X < x.end)]*scale,
-	lty=Ltype,col=cola,lwd=4,xlim=c(x.lim.min,x.lim.max),ylim=c(ymin,ymax))
+	lty=Ltype,col=cola,lwd=Lwidth,xlim=c(x.lim.min,x.lim.max),ylim=c(ymin,ymax))
 
 z.boundary = Int.Beg
 if (round(Int.Beg,2) == 1.96) {z.boundary = 2}
@@ -1531,6 +1488,7 @@ wstart[1] = 1
 wstart = wstart/sum(wstart)
 wstart
 
+#SD.FIXED = FALSE
 if (SD.FIXED) { 
 	startval = c(wstart,ncz,rep(1,components));startval
 	lowlim = c(rep(0,components),rep(0,components),rep(1,components))
@@ -1540,8 +1498,6 @@ if (SD.FIXED) {
 	lowlim = c(rep(0,components),rep(0,components),rep(1,components))
 	highlim = c(rep(1,components),rep(Int.End,components),zsds)
 }
-
-#print(startval)
 
 if(components == 1) { 
 	startval = c(1,2,1)
@@ -1895,25 +1851,12 @@ return(res)
 ### BBB ZingStart #START #Begin of Main Program 
 #####################################
 
-#z.val.input = z.rep
-
-#Zing = function(z.val.input,lp=c() ) {
-
-#lp = c()
-if (length(lp) > 0) z.val.input = -qnorm(lp -log(2),log.p=TRUE)
 
 z.crit = qnorm(alpha/2,lower.tail=FALSE); z.crit
 
 components = length(ncz)
 
 zsds = rep(zsd,length(ncz))[1:components];zsds
-
-
-### get power values for the components (ncz)
-pow.dir = pnorm(abs(ncz),z.crit);pow.dir 
-
-### get the opposite sign probability
-sign.error = 1-pnorm(ncz,-z.crit);round(sign.error,3)
 
 
 ### remove NA
@@ -1999,20 +1942,19 @@ loc.power
 ### EXTENDED Z-CURVE
 
 if (Est.Method == "EXT") {
-	#print("TESTING EXTENDED")
-	print(ncz)
+
 	components = length(ncz)
-	zsds
-	#zsd = 1
+	zsds = rep(zsd,components)
+
 	para.est.EXT = extended.zcurve(z.val.input,ncz,zsd);para.est.EXT
 	fit = para.est.EXT[(3*components+1)];fit
 	para.est.EXT = para.est.EXT[1:(3*components)]
 
 	para.est.EXT
 
-	WT = para.est.EXT[1:components];WT
-	WT = WT/sum(WT)
-	WT
+	w.inp = para.est.EXT[1:components];w.inp
+	w.inp = w.inp/sum(w.inp)
+	round(w.inp,3)
 
 	ncz = para.est.EXT[(components+1):(2*components)]
 	ncz
@@ -2125,18 +2067,26 @@ res.text
 
 if (Show.Histogram) { 
 
-	print(res)
-
 	Draw.Histogram(w.all,results=res.text,cola=col.hist)
 
 	if (Show.KD) Draw.KD(z.val.input,w.all,cola=col.kd)
 
-	if (Show.Zcurve.All) {
+	if (Show.Zcurve.All & max(zsds) < 1.1) {
 		Draw.Zcurve.All(z.val.input,w=w.all,ncz=ncz,zsds=zsds,cola=col.zcurve,
 			Ltype=3,Lwidth = 1,x.start=x.lim.min,x.end=x.lim.max)
 		Draw.Zcurve.All(z.val.input,w=w.all,ncz=ncz,zsds=zsds,cola=col.zcurve,
 			Ltype=1,Lwidth = 3,x.start=Int.Beg,x.end=Int.End)
 		}
+
+	if (Show.Zcurve.All & max(zsds) > 1.1) {
+		Draw.Zcurve.All.SDG1(w=w.all,ncz=ncz,zsds=zsds,cola=col.zcurve,
+			Ltype = 3,Lwidth = 4,x.start=x.lim.min,x.end=x.lim.max)
+		Draw.Zcurve.All.SDG1(w=w.all,ncz=ncz,zsds=zsds,cola=col.zcurve,
+			Ltype=1,Lwidth = 4,x.start=Int.Beg,x.end=Int.End)
+		}
+
+
+
 
 	if (Show.Zcurve.Sig) {
 		Draw.Zcurve.Sig(z.val.input,ncz=ncz,zsds=zsds,w.sig,cola=col.zcurve,
@@ -2200,15 +2150,16 @@ if (boot.iter > 0 & Est.Method == "EXT") {
 	names(FDR) = "FDR"
 	FDR
 
-	res.text = c(ODR,ERR,EDR,FDR)
+	res.text = res[1:4]
 	names(res.text) = c("ODR","ERR","EDR","FDR")
 
 	res.text = cbind(res.text,res.ci[1:4,])
-	res.text
+	res.text = round(res.text,3)
 
 	res.text = rbind(res.text,c(p.bias))
 	rownames(res.text)[5] = "BIAS"
 	round(res.text,3)
+	
 
 }
 
@@ -2216,7 +2167,6 @@ if (boot.iter > 0 & Est.Method == "EXT") {
 if (boot.iter > 0) {
 
 	if (Show.Histogram) {
-		print(res.text) 
 		Draw.Histogram(w.all,
 		results=res.text,cola=col.hist,Write.CI = TRUE)
 		if (Show.KD) Draw.KD(z.val.input,w.all,cola=col.kd)
@@ -2247,7 +2197,6 @@ return(list(
     bias = p.bias,
     fit.comp = res.het
   ))
-return(res)
 
 } #End of Zing
 

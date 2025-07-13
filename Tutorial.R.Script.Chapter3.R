@@ -1,193 +1,226 @@
-### Install required packages (only needs to be done once)
+
+
+###############################################################################
+# Chapter 3 – Analyzing the OSC Reproducibility Project - Replications
+###############################################################################
+
+### 0.0 – SETUP
+
+# Install required packages (run once only)
 install.packages(c("zcurve", "KernSmooth", "stringr", "parallel"))
 
-### download zcurve functions and run locally
-### Set working directory to the folder containing the zcurve3.0 function
-setwd("C:\\Users\\ulric\\Dropbox\\PHPCurves\\DOCS\\z-curve\\Tutorial")
-zcurve3 = "Zing.25.07.11.test.R"
+# Load z-curve function from a local file
+setwd("C:/Users/ulric/Dropbox/PHPCurves/DOCS/z-curve/Tutorial")
+zcurve3 <- "Zing.25.07.11.test.R"
 source(zcurve3)
 
-### load zcurve function from github (no download needed)
-### Load the zcurve function fron github (renamed as zcurve3)
-zcurve3 = "https://raw.githubusercontent.com/UlrichSchimmack/zcurve3.0/refs/heads/main/Zing.25.07.11.test.R"
+# Alternatively, load z-curve function directly from GitHub
+zcurve3 <- "https://raw.githubusercontent.com/UlrichSchimmack/zcurve3.0/refs/heads/main/Zing.25.07.11.test.R"
 source(zcurve3)
 
-#########################################################################
-### Chapter 3 – Analyzing the OSC Reproducibility Project - Replications
-#########################################################################
+### 1.0 – DATA PREPARATION (skip if already done in Chapter 2)
 
-### 1.0 – DATA PREPARATION (not required, if you just worked on Chapter 2)
-
-### Download data directly from OSF
+# Download OSC reproducibility data from OSF
 url <- "https://osf.io/download/fgjvw/"
 osc <- read.csv(url)
 osc <- data.frame(osc)
-dim(osc)  # Should return 168 x 138
+dim(osc)  # Expected dimensions: 168 x 138
 
-### Extract p-values from original and replication studies
+# Extract p-values from original and replication studies
 pval <- data.frame(
-  osc$"Authors..O.",
-  osc$"T_pval.recalc..O.",
-  osc$"T_pval..R."
+  authors = osc$"Authors..O.",
+  ori     = osc$"T_pval.recalc..O.",
+  rep     = osc$"T_pval..R."
 )
 
-### Keep only rows with complete p-values
+# Keep rows with complete p-values only
 pval <- pval[complete.cases(pval), ]
-colnames(pval) <- c("authors", "ori", "rep")
 
-### Check distribution of original p-values
+# Check distribution of replication p-values
 table(cut(pval$rep, c(0, .01, .05, .10, .20, 1)))
-# Interpretation: how many are 
-#    "really" significant, p < .01
-#    "just" significant, p < .05 & p > .01
-#    "marginally" significant, p > .05 & p < .10
-#    "marginally marginally significant, p < .20 & p > .20
-#    "clearly not" significant, p > .20
+# Interpretation:
+#   < .01 = "clearly significant"
+#   .01 – .05 = "just significant"
+#   .05 – .10 = "marginal"
+#   .10 – .20 = "borderline"
+#   > .20 = "not significant"
 
-
-### Contingency table of significance (ori vs. rep)
+# Create a contingency table comparing significance in originals vs replications
 tab <- table(pval$ori < .05, pval$rep < .05)
 tab
-tab / sum(tab)            # Proportions
-tab[2, ] / sum(tab[2, ])  # Replication success for p < .05 originals
+tab / sum(tab)             # Proportion of each cell
+tab[2, ] / sum(tab[2, ])   # Replication success rate for significant originals
 
+# Note: Only about 33% of originally significant results replicated
 
-
-### Only ~33% of original p < .05 results replicated
-
-### Convert two-sided p-values to z-values
+### 1.1 – Convert p-values to z-values
 z.ori <- qnorm(1 - pval$ori / 2)
 z.rep <- qnorm(1 - pval$rep / 2)
 
-### alternative formula: -qnorm(pval$ori/2)
+# Truncate extreme z-values for display
+z.ori[z.ori > 10] <- 10
+z.rep[z.rep > 10] <- 10
 
-### Scatterplot of original vs. replication z-values
+# Plot: z-scores for original vs. replication studies
 plot(z.ori, z.rep, xlim = c(0, 6), ylim = c(0, 6))
-abline(a = 0, b = 1)  # 45-degree line
-# Replication z-values are generally lower
+abline(a = 0, b = 1)  # 45° line
+# Note: Replication z-values are generally lower
 
-### limit maximum to 10 (has no influence on z-curve estimates)
-z.ori[z.ori > 10] = 10
-z.rep[z.rep > 10] = 10
+# Correlation between original and replication z-values
+cor(z.ori, z.rep)  # Expected: ~.40
 
-### test correlation
-cor(z.ori,z.rep)
-# result: r = .4, studies with higher power produce stronger z-scores in ori and rep
-
-### check replication rates for different levels of z-values in ori
-tab = table(cut(z.ori,c(0,1.5,2,2.6,3,4,6,11)),cut(z.rep,c(0,1.5,2,2.6,3,4,6,11)))
-rownames(tab) = paste0("ori",rownames(tab))
-colnames(tab) = paste0("rep",colnames(tab))
+# Check replication success by bins of z-ori
+tab <- table(
+  cut(z.ori, c(0, 1.5, 2, 2.6, 3, 4, 6, 11)),
+  cut(z.rep, c(0, 1.5, 2, 2.6, 3, 4, 6, 11))
+)
+rownames(tab) <- paste0("ori_", rownames(tab))
+colnames(tab) <- paste0("rep_", colnames(tab))
 tab
-# result: z-values up to 4 are more likely to end with failure than success
 
-#######################################################################
-### 2.0 – Z-CURVE ANALYSIS OF REPLICATION STUDIES
-#######################################################################
+### 2.0 – Z-CURVE ANALYSIS
 
-### 2.1 Run basic z-curve model
+# Run basic z-curve model
 source(zcurve3)
 Zing(z.rep)
 
-### 2.2 Adjust plot parameters for better visualization
-source(zcurve3)
+# Adjust plot appearance
 ymax <- 0.8
 ymin <- -0.05
-hist.bar.width <- 0.4		# adjust the bar.width for a smooth histogram
+hist.bar.width <- 0.4
 Zing(z.rep)
-# ODR == EDR suggests no publication bias
-
+# Note: ODR ≈ EDR suggests no publication bias
 
 ### 3.0 – TESTING FOR PUBLICATION BIAS
 
-### Set parameters for bias detection
-Int.Beg <- 0        # Include all z > 0 (significant and non-significant)
-TEST4BIAS <- TRUE   # Enable bias test
-just <- 0.6         # "Just significant" region: z = 2.0 to 2.6 (default)
+Int.Beg     <- 0       # Include all z > 0
+TEST4BIAS   <- TRUE    # Enable test
+just        <- 0.6     # Define “just significant” region: z = 2.0–2.6
 Zing(z.rep)
 
-### Result: No evidence of bias
-### Also means, no evidence of reverse p-hacking
-### reverse p-hacking: turning significant results into non-signifiant results
-### to make replication studies more interesting
+# Result: No evidence of publication bias or "reverse p-hacking"
+# Reverse p-hacking = altering results to appear less significant
 
 ### 4.0 – TEST FOR P-HACKING
 
-### P-hacking inflates just-significant results but not high z-values
-### Restrict model to z-values > 2.6 (just above just-significant region)
+# Restrict analysis to z > 2.6 (above just-significant range)
 Int.Beg <- z.crit + just
 Zing(z.rep)
 
-### no evidence of p-hacking
+# Result: No evidence of p-hacking in replications
 
-### 5.0 – TEST FOR HETEROGENEITY (slow!)
-Int.Beg = 0                 # reset to 0 to use all z-values 
-TEST4HETEROGENEITY = 50     # 0 means FALSE, > 0 is # of bootstrap runs
-het.res = Zing(z.rep)
-round(het.res,3)
+### 5.0 – TEST FOR HETEROGENEITY (may take time)
 
-### Interpretation: SD M = 180, 90CI = [1.20 - 2.20] evidence of heterogeneity
-### Note: z > 6 studies excluded from this test (assumed power ≈ 1)
-### comparison of model 2 (2 components vs. model 3 (SD > 1) shows no difference
-### a model with a normal distribution of z-values fits the data. 
-### SD of non-central z-values is SD - 1.  
+Int.Beg             <- 0        # Use all z-values
+TEST4HETEROGENEITY  <- 500      # Enable test with 500 bootstrap samples
+z.res <- Zing(z.rep)
+round(z.res$fit.comp,3)
 
-### 5.1a - Fit Model with One Free Component
+# Interpretation:
+# SD ~1.80, 90% CI = [1.20, 2.20] → supports heterogeneity
+# Note: z > 6 excluded from estimation (assumed power ≈ 1)
+
+### Illustrating Heterogeneity Test
+
+### 5.1 – Fit Model with One Component, Free Mean, Fixed SD
+
 source(zcurve3)
 ymax <- 0.8
 ymin <- -0.05
-hist.bar.width <- 0.4		# adjust the bar.width for a smooth histogram
-Int.Beg = 0               # reset to 0 to use all z-values 
-Est.Method = "EXT"
-ncz = 2                   # specifies 1 component, value is starting value
-zsd = 1                   # fix at 1
-boot.iter = 500           # get confidence intervals for all parameters
-z.res = Zing(z.rep)
+hist.bar.width <- 0.4
+Int.Beg <- 0
+Est.Method <- "EXT"
+ncz <- 2         # Starting value for 1 component
+z.res <- Zing(z.rep)
+z.res 
+#Result:  - model does not predict significant results
 
-### 5.2a – Fit Model with Two Free Components
+
+### 5.2 – Fit Model with One Component, Free Mean, Free SD
+
 source(zcurve3)
 ymax <- 0.8
 ymin <- -0.05
-hist.bar.width <- 0.4		# adjust the bar.width for a smooth histogram
-Int.Beg = 0                 # reset to 0 to use all z-values 
-Est.Method = "EXT"
-ncz = c(0,2)              # specifies 1 component, value is starting value
-zsd = 1                   # fix at 1
-boot.iter = 500           # get confidence intervals for all parameters
-z.res = Zing(z.rep)
+hist.bar.width <- 0.4
+Int.Beg <- 0
+Est.Method <- "EXT"
+ncz <- 2         # Starting value for 1 component
+SD.FIXED = FALSE
+zsd = 4
+z.res <- Zing(z.rep)
+z.res 
+#Result:  - model fits, but the ERR estimate is low 
 
 
-### 6.1 – Fit Model with EM algorithm
+### 5.3 – Fit Model with Two Free Components
+
 source(zcurve3)
-ymax = .8
-ymin = -.04
-hist.bar.width <- 0.4     # adjust the bar.width for a smooth histogram
-Int.Beg = 0               # reset to 0 to use all z-values 
-boot.iter = 500           # get confidence intervals for all parameters
-Est.Method = "EM"         # Use the EM algorithm of zcurve.2.0
-z.res = Zing(z.rep)
+ymax <- 0.8
+ymin <- -0.05
+hist.bar.width <- 0.4
+Int.Beg <- 0
+Est.Method <- "EXT"
+ncz <- c(0, 2)    # Start values for 2 components
+zsd <- 1
+z.res <- Zing(z.rep)
+#Result:  - model fits, and shows higher ERR 
+#This result is preferred because it does not make assumptions about 
+#distribution of true power of studies. 
+#This model allows for one set of low powered and one set of high powered studies
+z.res
+#Results
+# - One component mean close to zero with high weight (.73)
+# - One component mean high (3.27) with low weight (.27)
 
 
-### 7 - Estimating False Positive Risk of Non-Significant Replications
 
-### FDR in the previous figure applies to significant results in replication studies
-### The more interesting question is the false positive risk in the original studies
-### We can estimate it, by computing the EDR of the non-significant results
-### The ODR is, of course, 0, but the EDR estimates power taking the selection
-### for non-significance into account. 
+### 6.0 – Fit EM Algorithm Model
 
-z.rep.ns = z.rep[z.rep < 1.96]  # select only non-significant results
-z.res = Zing(z.rep.ns)          # fit z-curve 
- 
-#Result: The EDR is low. Even the upper limit of the 95%CI is only 22%. 
-#        The low EDR implies a high FDR, but the 95%CI is wide. 
-#        We cannot say that there are many false positive results,
-#        but we can say that many could be fales positive results. 
+source(zcurve3)
+ymax <- 0.8
+ymin <- -0.04
+hist.bar.width <- 0.4
+Int.Beg <- 0
+Est.Method <- "EM"   # Expectation-Maximization
+boot.iter <- 500
+z.res <- Zing(z.rep)
 
-### Summary
-### Chapter 3 introduced you to ... 
-### 1. Est.Method <- "EXT"           # Use EXT for free means and SDs of ncz
-### 2. Use only non-significant results of replication studies to estimate 
-       FDR of original studies. 
+
+### 7.0 – FALSE POSITIVE RISK FOR NON-SIGNIFICANT REPLICATIONS
+
+# Estimating FDR for non-significant replication results
+
+z.rep.ns <- z.rep[z.rep < 1.96] # subset of only non-significant results
+
+source(zcurve3)
+ymax <- 1
+ymin <- -0.05
+hist.bar.width <- 0.4
+Int.Beg <- 0
+Int.End <= z.crit
+Est.Method <- "EXT"   # To get confidence intervals, not yet possible with "EM"
+ncz = c(0,3)
+boot.iter <- 500
+z.res <- Zing(z.rep.ns)
+
+# Interpretation:
+# ODR underestimates power because of selection for non-significance
+# EDR corrects for this. 
+# EDR can be converted into FDR 
+# FDR is high; 95% CI upper bound includes 100%...
+# but lower value is 27%
+# Absence of Evidence, but not Evidence of Absence of an Effect
+
+
+
+###############################################################################
+# Summary Notes:
+#
+# 1. Use EXT method to estimate freely varying means and SDs (Est.Method = "EXT").
+# 2. Use all tests when there is no evidence of bias
+# 3. Deeper understanding of heterogeneity test
+# 4. !!! Use non-significant replication results to estimate FDR of original findings.
+###############################################################################
+
 
 
