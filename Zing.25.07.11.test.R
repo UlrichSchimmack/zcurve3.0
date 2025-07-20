@@ -133,6 +133,7 @@ TEST4HETEROGENEITY <- 0             # Optional heterogeneity test (slow) — set
 
 print(version)
 print("Parameter OK")
+print("???")
 
 
 ##################################################################
@@ -1136,12 +1137,15 @@ Get.Densities = function(zval,bw="nrd0",d.x.min=0,d.x.max=6,Augment=TRUE) {
 #zval = z.val.input[z.val.input > Int.Beg];d.x.max = 6;d.x.min = z.crit;bw = .2
 
 ### find the maximum z-score. This is only needed if the maximum z-score is below Int.End
-max.z = d.x.max
+max.z = Int.End
 if (max(zval) < d.x.max) max.z = max(zval)
 max.z
 
 ### Augment z-scores on the left side of Interval to avoid downward trend 
 ### of kernal density function (assumes values go to 0)
+
+print("AUGMENT")
+print(Augment.Factor)
 
 if (Augment) { 
 
@@ -1160,7 +1164,7 @@ if (Augment) {
 
 #print(summary(Z.INT.USE))
 
-Z.Density = bkde(Z.INT.USE,bandwidth=bw,range=c(d.x.min,d.x.max)) 
+Z.Density = bkde(Z.INT.USE,bandwidth=bw,range=c(d.x.min-Augment.bw,d.x.max)) 
 val.max = d.x.max
 D = data.frame(Z.Density$x,Z.Density$y)
 colnames(D) = c("ZX","ZY")
@@ -1598,9 +1602,15 @@ round(cbind(pow.sel,w.inp,w.all),3)
 ### using Jerry's formula going from before selection to after selection
 ### by multiplying by power (w)
 ### again all the weights are standardized by dividing by the sum of all weights
+
 w.sig = w.all * (pow.dir + sign.error)
 w.sig = w.sig / sum(w.sig)
 round(cbind(pow.sel,w.inp,w.all,w.sig),3)
+
+sum(pow.dir*w.sig)
+sum(pow.dir*w.all)
+
+
 
 #print("Check Two-Sided")
 #print(two.sided)
@@ -1858,6 +1868,18 @@ return(res)
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
 #####################################
 ### BBB ZingStart #START #Begin of Main Program 
 ### BBB ZingStart #START #Begin of Main Program 
@@ -1866,6 +1888,16 @@ return(res)
 ### BBB ZingStart #START #Begin of Main Program 
 ### BBB ZingStart #START #Begin of Main Program 
 #####################################
+
+
+
+
+
+
+
+
+
+
 
 
 z.crit = qnorm(alpha/2,lower.tail=FALSE); z.crit
@@ -1904,9 +1936,10 @@ ODR.high = round((ODR+1.96*ODR.se),2);ODR.high
 
 ODR.res = c(ODR,ODR.low,ODR.high)
 
+
 z.extreme = c(
-	length(z.val.input[z.val.input < -Int.End])/length(z.val.input),
-	length(z.val.input[z.val.input > Int.End])/length(z.val.input)
+	length(z.val.input[z.val.input < -Int.End])/length(z.val.input[z.val.input < -z.crit]),
+	length(z.val.input[z.val.input > Int.End])/length(z.val.input[z.val.input > z.crit])
 )
 names(z.extreme) = c("Ext.Neg","Ext.Pos")
 (z.extreme*100)
@@ -1925,6 +1958,10 @@ names(z.extreme) = c("Ext.Neg","Ext.Pos")
 #print("Fitting Old Fashioned")
 
 para.est.OF = old.fashioned.zcurve(z.val.input)
+
+print("para.est.OF")
+print(para.est.OF)
+
 fit = para.est.OF[components+1];fit
 
 para.est.OF = c(para.est.OF[1:components],ncz,zsds)
@@ -1934,8 +1971,8 @@ para.est.OF
 cp.res = Compute.Power(para.est.OF,Int.Beg=Int.Beg)
 round(cp.res,3)
 
-#print("Check cp.res")
-#print(cp.res)
+print("Check cp.res")
+print(cp.res)
 
 EDR = cp.res[1];EDR
 ERR = cp.res[4];ERR
@@ -2078,7 +2115,10 @@ names(p.bias) = c("OBS.JS","EXP.JS","EJS.p")
 #print(p.bias)
 
 res.text = c(res[1:4],p.bias[3])
-res.text
+
+
+print("RESULTS")
+print(res.text)
 
 res.zsds = zsds
 
