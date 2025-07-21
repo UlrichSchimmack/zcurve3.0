@@ -285,11 +285,9 @@ run.zcurve = function(Est.Method = "OF",kd.model="KD2",K=6,
 	biter = boot.iter
 	if (boot.iter == 0) biter = FALSE
 
-	z.res = zcurve(sim.z,bootstrap=biter,method=meth,
+	z.res = zcurve(z.val.input,bootstrap=biter,method=meth,
 		control=list(parallel = parallel,
 		sig_level=alpha,a = Int.Beg,b = Int.End,mu=ncz))
-
-	print(Est.Method)
 
 	return(z.res)
 
