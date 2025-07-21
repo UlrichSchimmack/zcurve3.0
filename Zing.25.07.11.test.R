@@ -46,7 +46,7 @@ Plot.Fitting <- FALSE        # Plot fitting curve (only for Est.Method = "OF" or
 
 ### PLOT SETTINGS
 
-version <- "Version 25.07"   # Version label to appear on plots
+version <- "Version 25.07.21"   # Version label to appear on plots
 Title <- ""                  # Optional plot title
 
 letter.size <- 1             # Text size in plots
