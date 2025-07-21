@@ -133,8 +133,6 @@ TEST4HETEROGENEITY <- 0             # Optional heterogeneity test (slow) — set
 
 print(version)
 print("Parameter OK")
-print("???")
-
 
 ##################################################################
 ### END OF SETTING DEFAULT PARAMETERs
@@ -283,17 +281,28 @@ run.zcurve = function(Est.Method = "OF",kd.model="KD2",K=6,
 	alpha = .05,Int.Beg = 1.96,Int.End = 6, boot.iter = 0,parallel=TRUE) {
 
 	if (Est.Method == "OF") meth = "density" else meth = "EM"
-	z.res = zcurve(z.val.input,bootstrap=boot.iter,method=meth,
+
+	biter = boot.iter
+	if (boot.iter == 0) biter = FALSE
+
+	z.res = zcurve(sim.z,bootstrap=biter,method=meth,
 		control=list(parallel = parallel,
 		sig_level=alpha,a = Int.Beg,b = Int.End,mu=ncz))
 
-return(z.res)
+	print(Est.Method)
+
+	return(z.res)
+
 } ### End run.zcurve
 
 if (TESTING) {
-	z.res = run.zcurve(z.val.input,Est.Method="OF",
-		kd.model="KD2",Int.Beg=0,parallel=parallel)
+	meth = "density"
+	z.res = run.zcurve(z.val.input,Est.Method=meth,boot.iter=0)
 	z.res
+	#str(z.res)
+	round(z.res$fit$weights,3)
+	w.inp = z.res$fit$weights
+	round(w.inp,3)
 }
 
 
@@ -1909,7 +1918,10 @@ zsds = rep(zsd,length(ncz))[1:components];zsds
 
 ### remove NA
 z.val.input = z.val.input[!is.na(z.val.input)];length(z.val.input)
-z.val.input = z.val.input[z.val.input >= x.lim.min]
+
+
+if (two.sided) z.val.input = abs(z.val.input)
+
 ### limit range
 z.val.input[z.val.input > MAX.INP.Z] = MAX.INP.Z
 length(z.val.input)
@@ -1959,14 +1971,12 @@ names(z.extreme) = c("Ext.Neg","Ext.Pos")
 
 para.est.OF = old.fashioned.zcurve(z.val.input)
 
-print("para.est.OF")
-print(para.est.OF)
-
 fit = para.est.OF[components+1];fit
 
 para.est.OF = c(para.est.OF[1:components],ncz,zsds)
-para.est.OF
-#weights = para.est.OF[1:components]
+
+#print("para.est.OF")
+#print(para.est.OF)
 
 cp.res = Compute.Power(para.est.OF,Int.Beg=Int.Beg)
 round(cp.res,3)
@@ -2056,7 +2066,7 @@ if(Est.Method == "EM" & boot.iter == 0) {
 	components = length(ncz)	
 	#summary(z.val.input)
 	#print("Fitting EM")
-	z.res = run.zcurve(z.val.input,Est.Method="EM",boot.iter,
+	z.res = run.zcurve(z.val.input,Est.Method="EM",boot.iter=boot.iter,
 		Int.Beg=Int.Beg,Int.End=Int.End,parallel=parallel)
 	summary(z.res)     
 	para.est.EM = c(summary(z.res, type="parameters")$coefficients)
