@@ -3,6 +3,8 @@
 ### SETTING PARAMETERS FOR Z-CURVE MODEL
 ########################################################################
 
+version <- "Version 25.07.25"   # Version label to appear on plots
+
 # Optional cleanup 
 # rm(list = ls())
 # options(scipen = 999)  # Disable scientific notation
@@ -46,7 +48,6 @@ Plot.Fitting <- FALSE        # Plot fitting curve (only for Est.Method = "OF" or
 
 ### PLOT SETTINGS
 
-version <- "Version 25.07.21"   # Version label to appear on plots
 Title <- ""                  # Optional plot title
 
 letter.size <- 1             # Text size in plots
@@ -85,7 +86,7 @@ two.sided <- TRUE                   # Assume two-sided z-values (use abs(z)); no
 # Color scheme
 col.zcurve <- "violetred3"
 col.hist <- "blue3"
-col.kd <- "black"
+col.kd <- "green3"
 
 Est.Method <- "OF"                  # Estimation method: "OF", "EM", or "EXT"
 Int.Beg <- z.crit                   # Start of modeling interval (default = critical z)
@@ -106,10 +107,10 @@ fixed.false.positives <- 0          # If > 0, constrains proportion of false pos
 n.bars <- 512                       # Number of bars in histogram
 
 Augment <- TRUE                     # Apply correction for bias at lower bound
-Augment.Factor <- 1.4               # Amount of augmentation
-Augment.bw <- 0.20                  # Smoothing bandwidth for augmentation
+Augment.Factor <- 1                 # Amount of augmentation
 
 bw.est <- 0.05                      # Bandwidth for kernel density (lower = less smoothing, higher = more smoothing)
+bw.aug <-  .20						 # Width of Augmentation interval
 
 ### INPUT RESTRICTIONS
 
@@ -1148,6 +1149,21 @@ max.z = Int.End
 if (max(zval) < d.x.max) max.z = max(zval)
 max.z
 
+Z.Density = bkde(z.val.input[z.val.input > round(Int.Beg,1)  
+	& z.val.input < round(Int.Beg,1) + 1.5 + 4*bw.est],bandwidth=.05,
+	range=c(Int.Beg,Int.Beg+1))
+D = data.frame(Z.Density$x,Z.Density$y)
+colnames(D) = c("ZX","ZY")
+D = D[D$ZX > round(Int.Beg,1) + 4*bw.est & D$ZX < Int.Beg + 1,]
+summary(D$ZX)
+dim(D)
+#plot(D$ZX,D$ZY,ylim=c(0,2))
+
+#plot(Z.Density$x,Z.Density$y)
+d.reg = -lm(D$ZY ~ D$ZX)$coefficients[2];d.reg
+
+Augment.Factor = Augment.Factor + d.reg
+
 ### Augment z-scores on the left side of Interval to avoid downward trend 
 ### of kernal density function (assumes values go to 0)
 
@@ -1157,8 +1173,8 @@ print(Augment.Factor)
 if (Augment) { 
 
 	AUG = c()
-	n.AUG = round(Augment.Factor*length(zval[zval > d.x.min & zval < d.x.min+Augment.bw]));n.AUG
-	if (n.AUG > 0) AUG = seq(d.x.min-Augment.bw,d.x.min-.01,Augment.bw/n.AUG)
+	n.AUG = round(Augment.Factor*length(zval[zval > d.x.min & zval < d.x.min+bw.aug]));n.AUG
+	if (n.AUG > 0) AUG = seq(d.x.min-bw.aug,d.x.min-.01,bw.aug/n.AUG)
 
 	Z.INT.USE = c(zval,AUG)
 	#hist(Z.INT.USE[Z.INT.USE < 6],breaks=20)
@@ -1171,13 +1187,14 @@ if (Augment) {
 
 #print(summary(Z.INT.USE))
 
-Z.Density = bkde(Z.INT.USE,bandwidth=bw,range=c(d.x.min-Augment.bw,d.x.max)) 
+Z.Density = bkde(Z.INT.USE,bandwidth=bw.est,range=c(d.x.min-bw.aug,d.x.max)) 
 val.max = d.x.max
 D = data.frame(Z.Density$x,Z.Density$y)
 colnames(D) = c("ZX","ZY")
 #plot(D$ZX,D$ZY)
 D = D[D$ZX > d.x.min & D$ZX < val.max,]
 dim(D)
+#plot(D$ZX,D$ZY)
 
 bar.width = D$ZX[2] - D$ZX[1]
 D$ZY = D$ZY/(sum(D$ZY*bar.width)) 
@@ -1191,17 +1208,6 @@ return(D)
 
 }  ### End of Get Densities 
 
-
-### Test Get.Densities 
-if(1==2){
-Int.End = 6
-z.val.input = z
-Z.INT = z.val.input[z.val.input >= Int.Beg & z.val.input <= Int.End]
-Augment = FALSE
-densy = Get.Densities(zval=Z.INT,bw=bw.est,d.x.min=Int.Beg,d.x.max=Int.End,Augment=Augment);dim(densy);plot(densy[,1],densy[,2])
-dim(densy)
-densy[densy[,1] > 5.8,]
-}
 
 #######################################################
 ### End of Get Densities
@@ -1389,8 +1395,7 @@ z.est = c()
 for (i in 1:n.bars) z.est[i] = sum(Dens[,i]*WT)
 z.est = z.est*scale
 
-if (Show.Fitted) Draw.Histogram(WT,
-	results=res,col=col.hist,Write.CI = FALSE)
+Draw.Histogram(WT,results=res,col=col.hist,Write.CI = FALSE)
 
 par(new=TRUE)
 
@@ -1583,97 +1588,47 @@ w.inp = para[1:components]
 ncz = para[(1+components):(2*components)]
 zsds = para[(1+2*components):(3*components)]
 
-#print(w.inp);print(ncz);print(zsds);print(z.ext)
-
 ### get power values for the components (ncz)
 pow.dir = pnorm(abs(ncz),z.crit);pow.dir 
 
 ### get the opposite sign probability
 sign.error = 1-pnorm(ncz,-z.crit);round(sign.error,3)
 
+pow = pow.dir + sign.error
+pow.ext = c(pow,1)
+
 ### this gives the power with the Int.Beg selection criterion as alpha 
 ### this power is used as a weight to get the weights for the full distribution
 ### using Jerry's insight that weight before selection is weight after selection divided by power
 ### get power values for the components (ncz)
 pow.sel = pnorm(ncz,Int.Beg) + pnorm(-ncz,Int.Beg);pow.sel
+pow.sel.ext = c(pow.sel,1)
 
-### now we apply Jerry's third theorem in reverse to compute 
-### the weights before selection (w.all)
-### once we have the weights, we devided by sum of all weights 
-### so that they add up to 1
-w.all = w.inp / pow.sel
-w.all = w.all / sum(w.all)
-round(cbind(pow.sel,w.inp,w.all),3)
-	
-### now we are ready to compute the weights after selection for significance
-### using Jerry's formula going from before selection to after selection
-### by multiplying by power (w)
-### again all the weights are standardized by dividing by the sum of all weights
+w.inp.ext = c(w.inp*(1-z.ext), z.ext)          # estimated weights
 
-w.sig = w.all * (pow.dir + sign.error)
-w.sig = w.sig / sum(w.sig)
-round(cbind(pow.sel,w.inp,w.all,w.sig),3)
+w.all.ext   <- (w.inp.ext + w.inp.ext*(1-pow.sel.ext)
+   /(pow.sel.ext)) / sum(w.inp.ext + w.inp.ext*(1-pow.sel.ext)
+   /(pow.sel.ext))
 
-sum(pow.dir*w.sig)
-sum(pow.dir*w.all)
+EDR = sum(w.all.ext*pow.ext);EDR
+
+w.sig.ext = w.all.ext * pow.ext
+w.sig.ext = w.sig.ext / EDR
+sum(w.sig.ext)
+
+pow.dir.ext = c(pow.dir,1)
+
+w.all = w.all.ext[1:components]
+w.sig = w.sig.ext[1:components]
 
 
+ERR = sum(w.sig.ext*pow.dir.ext);ERR
 
-#print("Check Two-Sided")
-#print(two.sided)
+ERR.pos = NA
+ERR.neg = NA
 
-if (two.sided) {
-
-	### compute expected replication rate
-	### this is easy, replicabilty is simply the weighted sum of power
-	### using the weights after selection for significance, w.sig
-	### [but limited to values below Int.End
-	w.sig.ext = c(w.sig * (1-z.ext),z.ext);round(w.sig.ext,3)
-	w.sig.ext
-	sum(w.sig.ext)
-
-	pow.sig.ext = c(pow.dir,1);pow.sig.ext
-
-	ERR = sum(pow.sig.ext*w.sig.ext);ERR
-	
-	ERR.pos = NA
-	ERR.neg = NA
-
-	### compute expected discovery rate 
-	### weights are reweighted so that extreme values are included with power = 1
-	### as the weighted average of power using the weights before selection, w.all
-
-	pow.ext = c(pow.dir+sign.error,1)
-	round(pow.ext,3)
-
-	w.all.ext = c(w.all*(1-z.ext),z.ext)
-	cbind(round(pow.ext,3),round(w.all.ext,3))
-
-	EDR = sum(w.all.ext*pow.ext);EDR
-	EDR.pos = NA
-	EDR.neg = NA
-
-	#print("Check Compute Power")
-	#print(c(EDR,ERR))
-	#print("Check Compute Power")
-
-} else {
-	w.pos = c(w.all[ncz >= 0]*(1-sum(z.ext[2])),z.ext[2])
-	w.pos = w.pos/sum(w.pos)
-	pow.pos = c(pow[ncz >= 0],1)
-	cbind(c(ncz[ncz >= 0],10),pow.pos,w.pos)
-	EDR.pos = sum(w.pos*pow.pos)/sum(w.pos);EDR.pos
-
-	EDR.neg = NA
-	w.neg = c(z.ext[1],w.all[ncz <= 0]*(1-sum(z.ext[1])))	
-	w.neg = w.neg/sum(w.neg)	
-	pow.neg = c(1,pow[ncz <= 0])
-	cbind(c(-10,ncz[ncz <= 0]),pow.neg,w.neg)
-	EDR.neg = sum(w.neg*pow.neg);EDR.neg
-}
-
-
-### res stores the results to be past back from the function
+EDR.pos = NA
+EDR.neg = NA
 
 res.est = c(EDR,EDR.pos,EDR.neg,ERR,ERR.pos,ERR.neg)
 res.est
@@ -1979,8 +1934,8 @@ para.est.OF = c(para.est.OF[1:components],ncz,zsds)
 cp.res = Compute.Power(para.est.OF,Int.Beg=Int.Beg)
 round(cp.res,3)
 
-print("Check cp.res")
-print(cp.res)
+#print("Check cp.res")
+#print(cp.res)
 
 EDR = cp.res[1];EDR
 ERR = cp.res[4];ERR
