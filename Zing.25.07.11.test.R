@@ -3,7 +3,7 @@
 ### SETTING PARAMETERS FOR Z-CURVE MODEL
 ########################################################################
 
-version <- "Version 25.07.25"   # Version label to appear on plots
+version <- "Version 25.07.30"   # Version label to appear on plots
 
 # Optional cleanup 
 # rm(list = ls())
@@ -95,10 +95,13 @@ Int.End <- 6                        # End of modeling interval (z > 6 = power = 
 ncz <- 0:6                          # Component locations (z-values at which densities are centered)
 components <- length(ncz)           # Number of components
 zsd <- 1                            # SD of standard normal z-distribution
+zsds = rep(zsd,components)          # one SD for each component
 
 just <- 0.6                         # Cutoff for "just significant" z-values (used in optional bias test)
 
-SD.FIXED <- TRUE                    # Fix SD values for EXT method (recommended)
+ZSD.FIXED <- FALSE                  # Fix SD values for EXT method 
+NCZ.FIXED <- FALSE                  # Fix NCZ values for EXT method
+W.FIXED   <- FALSE                  # Fix weights for EXT method
 
 fixed.false.positives <- 0          # If > 0, constrains proportion of false positives (e.g., weight for z = 0 component)
 
@@ -165,23 +168,25 @@ run.heterogeneity.test = function(z.val.input,boot.run = 500,
 
 res.boot = c()
 
+boot.i = 1
 for (boot.i in 1:boot.run ) {
 	print(boot.i)
 	zboot = sample(z.val.input,replace=TRUE)
 	ncz = 2
-	zsd = 1
+	zsds = 1
 	components = length(ncz)
-	para.est.EXT = extended.zcurve(zboot,ncz,zsd);para.est.EXT
+	para.est.EXT = extended.zcurve(zboot,ncz,zsds);para.est.EXT
 	fit.hom = para.est.EXT[(3*components+1)];fit.hom
-	ncz = c(1,3)
-	zsd = 1
+	NCZ.FIXED = FALSE
+	ncz = c(0,2,4)
+	zsds = c(1,1,1)
 	components = length(ncz)
-	para.est.EXT = extended.zcurve(zboot,ncz,zsd);para.est.EXT
-	fit.het.1 = para.est.EXT[(3*components+1)];fit.het.1
+	para.est.EXT = extended.zcurve(zboot,ncz,zsds);para.est.EXT
+	fit.het.1 = para.est.EXT[length(para.est.EXT)];fit.het.1
 	ncz = 2
-	zsd = 5
+	zsds = 5
 	components = length(ncz)
-	para.est.EXT = extended.zcurve(zboot,ncz,zsd);para.est.EXT
+	para.est.EXT = extended.zcurve(zboot,ncz,zsds);para.est.EXT
 	fit.het.2 = para.est.EXT[4];fit.het.2
 	sd.het.2 = para.est.EXT[3];sd.het.2
 
@@ -191,7 +196,6 @@ for (boot.i in 1:boot.run ) {
 
 	res.boot = rbind(res.boot,c(fit.hom,fit.het.1,fit.het.2,sd.het.2,
 		delta.fit.1,delta.fit.2,delta.fit.3))
-	print(res.boot[boot.i,])
 
 } # EOF boot iterations
 
@@ -281,7 +285,8 @@ return(bias.res)
 run.zcurve = function(Est.Method = "OF",kd.model="KD2",K=6,
 	alpha = .05,Int.Beg = 1.96,Int.End = 6, boot.iter = 0,parallel=TRUE) {
 
-	if (Est.Method == "OF") meth = "density" else meth = "EM"
+	meth = Est.Method
+	if (Est.Method == "OF") meth = "density"
 
 	biter = boot.iter
 	if (boot.iter == 0) biter = FALSE
@@ -327,7 +332,7 @@ EXT.boot = function()	{
 
 			if (Show.Iterations) print(paste0("EXT.boot Iteration: ",boot))
 
-			para.est.EXT = extended.zcurve(z.sample,ncz,zsd);para.est.EXT
+			para.est.EXT = extended.zcurve(z.sample,ncz,zsds);para.est.EXT
 		
 			fit = para.est.EXT[(3*components+1)];fit
 			para.est.EXT = para.est.EXT[1:(3*components)]
@@ -345,8 +350,8 @@ EXT.boot = function()	{
 			cp.input = c(w.inp,ncz,zsds)
 
 			if (mean(zsds) > 1.1) { cp.res = 
-				Compute.Power.SDG1(cp.input,Int.Beg=Int.Beg,BOOT=TRUE)
-			} else { cp.res = Compute.Power(cp.input,Int.Beg=Int.Beg) }
+				Compute.Power.SDG1(cp.input,BOOT=TRUE)
+			} else { cp.res = Compute.Power(cp.input) }
 
 			cp.res
 
@@ -372,7 +377,7 @@ EXT.boot = function()	{
 		CIs[1,1] = CIs[1,1]-ERR.CI.adjust
 		CIs[1,2] = CIs[1,2]+ERR.CI.adjust
 		if (CIs[1,1] < alpha/2) CIs[1,1] = alpha/2
-		if (CIs[1,1] > 1) CIs[1,2] = 1
+		if (CIs[1,2] > 1) CIs[1,2] = 1
 
 		CIs = rbind(CIs,quantile(boot.res[,2],c(CI.ALPHA/2,1-CI.ALPHA/2)) )
 		CIs[2,1] = CIs[2,1]-EDR.CI.adjust
@@ -709,9 +714,6 @@ hist(c(0),main="",ylim=c(ymin,ymax),ylab="",xlab="",xlim=c(x.lim.min,x.lim.max),
 	EDR = results[3];EDR
 	FDR = results[4];FDR
 
-	print("pbias")
-	print(p.bias)
-
 	if (is.na(p.bias)) TEST4BIAS = FALSE
 
 	if(TEST4BIAS) { 
@@ -888,7 +890,6 @@ Draw.Zcurve.All.SDG1 = function(w.inp,ncz=ncz,zsds=zsds,cola=col.zcurve,
 
 #Draw.Histogram(w.all,results=res.text,cola=col.hist)
 
-
 components = length(ncz)
 
 if (components == 1) { 
@@ -896,7 +897,7 @@ if (components == 1) {
 	zy = dnorm(zx,ncz,zsds)
 	d.sim = cbind(zx,zy)
 } else {
-	k.sim = 40000
+	k.sim = 500000
 	sim.z = c()
 	for (i in 1:components) sim.z = c(sim.z,
 			rnorm(w.inp[i]*k.sim,ncz[i],zsds[i]))
@@ -966,8 +967,6 @@ if (Show.Significance) {
 Draw.Zcurve.All = function(z.val.input,w,ncz,zsds,cola="black",Lwidth=4,
 	Ltype=1,x.start=x.lim.min,x.end=x.lim.max) {
 
-print("Draw.Zcurve.All")
-
 if (1 == 2) {
 	x.start = x.lim.min
 	x.start = Int.Beg
@@ -982,8 +981,6 @@ bar.width = .01
 Z.Density.X = seq(0,x.lim.max,bar.width)
 
 n.bars = length(Z.Density.X);n.bars
-
-zsds = rep(1,components)
 
 Dens	= c()
 for(i in 1:n.bars) {
@@ -1089,8 +1086,6 @@ for (i in 1:n.bars) z.est[i] = sum(Dens[,i]*w)
 summary(z.est)
 sum(z.est*bar.width)
 
-#plot(Z.Density.X,z.est)
-
 par(new=TRUE)
 lines(Z.Density.X[which(Z.Density.X >= x.start)],z.est[which(Z.Density.X >= x.start)]*scale,lty=Ltype,col=cola,lwd=4,
  xlim=c(x.lim.min,x.lim.max),ylim=c(ymin,ymax))
@@ -1157,9 +1152,8 @@ colnames(D) = c("ZX","ZY")
 D = D[D$ZX > round(Int.Beg,1) + 4*bw.est & D$ZX < Int.Beg + 1,]
 summary(D$ZX)
 dim(D)
-#plot(D$ZX,D$ZY,ylim=c(0,2))
 
-#plot(Z.Density$x,Z.Density$y)
+
 d.reg = -lm(D$ZY ~ D$ZX)$coefficients[2];d.reg
 
 Augment.Factor = Augment.Factor + d.reg
@@ -1167,8 +1161,6 @@ Augment.Factor = Augment.Factor + d.reg
 ### Augment z-scores on the left side of Interval to avoid downward trend 
 ### of kernal density function (assumes values go to 0)
 
-print("AUGMENT")
-print(Augment.Factor)
 
 if (Augment) { 
 
@@ -1292,7 +1284,6 @@ return(value)
 
 components = length(ncz)
 
-
 ### get the densities for each interval and each non-centrality parameter
 
 Z.INT = z.val.input[z.val.input >= Int.Beg & z.val.input <= Int.End]
@@ -1313,8 +1304,6 @@ bar.width = Z.Density.X[2] - Z.Density.X[1]
 bar.width
 
 ### Finish getting observed densities 
-
-zsds = rep(zsd,components)
 
 #print("Create Dens")
 Dens	= c()
@@ -1343,12 +1332,6 @@ if (fixed.false.positives > 0 & 0 %in% ncz) {
   highlim = c(rep(1,components-1),ncz,zsds);highlim
 }
 
-startval
-lowlim
-highlim
-ncz
-Int.Beg
-x.lim.min
 
 #TESTING = TRUE
 if (TESTING) Plot.Fitting = TRUE else Plot.Fitting = FALSE
@@ -1372,42 +1355,6 @@ sum(WT)
 
 res = c(WT,fit);res
 
-
-if (TESTING) {
-
-cola = "forestgreen"
-
-summary(Z.Density.X)
-n.bars = length(Z.Density.X);n.bars
-bar.width = Z.Density.X[2]-Z.Density.X[1]
-
-Dens	= c()
-for(i in 1:n.bars) {
-	for (j in 1:length(ncz)) {
-		Dens = c(Dens,dnorm(Z.Density.X[i],ncz[j],zsds[j]))
-	}
-}
-Dens = matrix(Dens,length(ncz),byrow=FALSE)
-sum.dens = rowSums(Dens)
-Dens = Dens/(sum.dens * bar.width)
-
-z.est = c()
-for (i in 1:n.bars) z.est[i] = sum(Dens[,i]*WT)
-z.est = z.est*scale
-
-Draw.Histogram(WT,results=res,col=col.hist,Write.CI = FALSE)
-
-par(new=TRUE)
-
-lines(Z.Density.X,z.est,lty=1,col=cola,lwd=4,
- xlim=c(x.lim.min,x.lim.max),ylim=c(ymin,ymax))
-
-}
-
-###
-
-res
-
 return(res)
 
 } ### End of old.fashioned.zcurve
@@ -1423,16 +1370,16 @@ return(res)
 ### USE EXTENDED Z-CURVE (Est.Method = "EXT"  (slower than OF)
 ################################################################
 
-extended.zcurve = function(z.val.input,ncz,zsd) {
+extended.zcurve = function(z.val.input,ncz=ncz,zsds=zsds) {
 
 ### this is the actual fitting function
 ext.zcurve.fitting = function(para,RetEst=FALSE,Fixed.Null=FALSE)    {
 
-
 ### get the weights
-weights = para[1:length(ncz)];weights
-means = para[(length(ncz)+1):(2*length(ncz))];means
-sds = para[(length(ncz)*2+1):(length(ncz)*3)];sds
+weights = para[1:components]
+means = para[(components+1):(2*components)]
+sds = para[(components*2+1):(3*components)]
+
 
 ### Finish getting observed densities for Int.Beg to Maximum Z-Score in Interval
 
@@ -1489,24 +1436,19 @@ return(value)
 
 ####
 
-###ncz = c(0,2);zsd=1 
-
-#z.val.input = rnorm(500,-.5,1)
-
 ### create set with z-scores in the interval used for model fitting
 Z.INT = z.val.input[z.val.input >= Int.Beg & z.val.input <= Int.End]
 summary(Z.INT)
 
-#ncz = 2;zsd = 1
 components = length(ncz);components
-
-zsds = rep(zsd,components);zsds
 
 #print(Augment)
 densy = Get.Densities(Z.INT,bw=bw.est,d.x.min=Int.Beg,d.x.max=Int.End,Augment=Augment)
 
 Z.Density.X = densy[,1]
 Z.Density.Y = densy[,2]
+
+#plot(Z.Density.X,Z.Density.Y)
 
 n.bars = length(Z.Density.X)
 n.bars
@@ -1515,33 +1457,42 @@ bar.width = Z.Density.X[2] - Z.Density.X[1]
 bar.width
 
 
-wstart = rep(1/components,components)
-wstart[1] = 1
-wstart = wstart/sum(wstart)
-wstart
-
-#SD.FIXED = FALSE
-if (SD.FIXED) { 
-	startval = c(wstart,ncz,rep(1,components));startval
-	lowlim = c(rep(0,components),rep(0,components),rep(1,components))
-	highlim = c(rep(1,components),rep(Int.End,components),rep(1,components))
+if (W.FIXED) {
+	startval = w.fix
+	lowlim = w.fix
+	highlim = w.fix
 } else {
-	startval = c(wstart,ncz,zsds);startval
-	lowlim = c(rep(0,components),rep(0,components),rep(1,components))
-	highlim = c(rep(1,components),rep(Int.End,components),zsds)
+	startval = rep(1/components,components)
+	lowlim = rep(0,components)
+	highlim = rep(1,components)
 }
 
-if(components == 1) { 
-	startval = c(1,2,1)
-	lowlim = c(1,0,0.5)
-	highlim = c(1,6,zsds)
+if (NCZ.FIXED) {
+	startval = c(startval,ncz)
+	lowlim = c(lowlim,ncz)
+	highlim = c(highlim,ncz)
+} else {
+	startval = c(startval,ncz)
+	lowlim = c(lowlim,rep(0,components))
+	highlim = c(highlim,rep(Int.End,components))
 }
 
-startval
-lowlim
-highlim
+if (ZSD.FIXED) { 
+	startval = c(startval,zsds)
+	lowlim = c(lowlim,zsds)
+	highlim = c(highlim,zsds)
+} else {
+	startval = c(startval,zsds)
+	lowlim = c(lowlim,rep(1,components))
+	highlim = c(highlim,zsds)
+}
 
-#ymax = 1.5
+if(components == 1) lowlim[1] = 1
+
+#print(startval)
+#print(lowlim)
+#print(highlim)
+
 #TESTING = TRUE
 if (TESTING == TRUE) Plot.Fitting = TRUE
 
@@ -1558,8 +1509,6 @@ return(c(res))
 
 } 
 
-### Testing 
-### test = extended.zcurve(z.val.input,ncz,zsd);test
 ######################################################
 ### End of Extended Zcurve
 #######################################################
@@ -1689,103 +1638,68 @@ return(res)
 ### Testing
 if (1 == 2) {
 w.inp = c(.5,.5)
-ncz = c(1.5,2.5)
-zsds = c(1.1,1.1)
+est.ncz = c(1.9,2.1)
+est.zsds = c(1.1,1.1)
+
+para = para.est.EXT
+
 }
 
 
-Compute.Power.SDG1 = function(para,BOOT=FALSE,Int.Beg=Int.Beg) {
-
-#para = para.est.EXT;para;BOOT=TRUE
-#TEST
-#ncz = c(1.1,2.8);zsds=c(1.05,1.05);w.inp=c(.5,.5);Int.Beg = 1.96;BOOT=FALSE
-
-
-#print("Compute Power Start")
-
-
-#print("Compute Power")
-z.crit = qnorm(alpha/2,lower.tail=FALSE); z.crit
-#print(z.crit)
-
+Compute.Power.SDG1 = function(para,BOOT=FALSE) {
 
 z.ext = z.extreme
 if (two.sided) z.ext = z.ext[2] else z.ext = sum(z.ext)
-print("Check Extreme")
-print(z.ext)
+z.ext
 
-
-### the input weights based on z.curve method
-### these are the weights based on the Int.Beg value
-### Int.Beg could be 1.96 (all significant)
-### but it can also be other values
-### Therefore the weights cannot be directly used
-### to estimate power/replicability
 w.inp = para[1:components]
-ncz = para[(1+components):(2*components)]
-zsds = para[(1+2*components):(3*components)]
-
-bar.width = .01 # how fine should be the resolution
-zx = seq(x.lim.min,x.lim.max,bar.width)
+est.ncz = para[(1+components):(2*components)]
+est.zsds = para[(1+2*components):(3*components)]
 
 ###
 
-components = length(ncz)
+components = length(est.ncz)
 
-nczs = seq(x.lim.min,x.lim.max,.5)
-pows = pnorm(nczs,z.crit) + pnorm(-nczs,z.crit)
-cbind(nczs,pows)
+sim.bw = .1
+
+sim.nczs = seq(x.lim.min,x.lim.max,sim.bw)
+sim.pows = pnorm(sim.nczs,z.crit) + pnorm(-sim.nczs,z.crit)
+sim.pow.sel = pnorm(sim.nczs,Int.Beg) + pnorm(-Int.Beg,sim.nczs)
 
 comp.i = 1
-set = c()
-
+w.set = c()
 for (comp.i in 1:components) {
-	w.nczs = dnorm(nczs,ncz[comp.i],zsds[comp.i]-1) 
-	w.nczs = w.nczs/sum(w.nczs)
-	#plot(nczs,w.nczs)
-	subset = data.frame(nczs,pows,w.nczs)
-	subset = subset[round(w.nczs,4) > 0,]
-	subset$w.nczs = subset$w.nczs / sum(subset$w.nczs)
-	subset$comp.i = comp.i
-	subset$w.inp = w.inp[comp.i] 
-	set = rbind(set,subset)
+	w.nczs = dnorm(sim.nczs,est.ncz[comp.i], sqrt(est.zsds[comp.i]^2-1) ) 
+	w.all = w.inp[components]*w.nczs/sim.pow.sel
+	w.all = w.all / sum(w.all)
+	w.set = rbind(w.set,w.nczs)
 }
-dim(set)
-set
 
-set$w.all = set$w.inp/set$pows
-set$w.all = set$w.all/sum(set$w.all)
-set$w.all
+dim(w.set)
+w.all = colSums(w.set)
+w.all = w.all / sum(w.all)
 
+sim.pows.ext = c(sim.pows,1)
+w.all.ext = c(w.all*(1-z.ext),z.ext)
 
-#local power is the true average power for an observed z-score 
-#we need to get the power values for all components
-#we need to get the weights of components 
-#we also need to get the densities of the z-value for all components
-#we create a double weighted weight using the weights of components and densities
-#if there is more than one component, we also need to take the model weights into account
-#the product of all 3 weights has to be scaled to 1
-#we then compute the weighted average power 
-#this is the local power for each observed z-value
-#this can be used to compute edr and err
+w.sig.ext = w.all.ext*sim.pows.ext
+w.sig.ext = w.sig.ext / sum(w.sig.ext)
 
-loc.pow = c()
-for (zx.i in 1:length(zx)) {
-	w.z = dnorm(zx[zx.i],set$nczs)
-	w.z = w.z/sum(w.z)
-	w = w.z * set$w.nczs * set$w.all
-	w = w / sum(w)
-	loc.pow = c(loc.pow,sum(w*set$pows)/sum(w))
-} 
+if (1 == 2) {
+sim.nczs.ext = c(sim.nczs,x.lim.max+1)
+plot(sim.nczs.ext,w.all.ext/sim.bw,ylim=c(0,1),col="purple3")
+par(new=TRUE)
+plot(sim.nczs.ext,w.sig.ext/sim.bw,ylim=c(0,1),pch=15,col="forestgreen")
+}
 
-#plot(zx,loc.pow,ylim=c(0,1))
+EDR = sum(sim.pows.ext*w.all.ext)/sum(w.all.ext);EDR
+ERR = sum(sim.pows.ext*w.sig.ext)/sum(w.sig.ext);ERR
 
+if (ERR > 100) ERR = 1
+if (EDR > 100) EDR = 1
 
-edr = mean(loc.pow);edr
-err = mean(loc.pow[zx > z.crit]);err
-
-ERR = err*(1-z.ext)+z.ext
-EDR = edr*(1-z.ext)+z.ext
+if (ERR < alpha/2) ERR = alpha/2
+if (EDR < alpha) EDR = alpha 
 
 ERR
 EDR
@@ -1805,14 +1719,33 @@ res
 
 if (int.loc > 0 & BOOT==FALSE) {
 
-	local.power = tapply(loc.pow,cut(zx,seq(x.lim.min-.0001,x.lim.max,int.loc),
-		include.lowest=TRUE),mean)
-	local.power
-	length(local.power)
+	bar.width = .01 # how fine should be the resolution
+	Z.X = seq(x.lim.min,Int.End,bar.width);summary(Z.X)	 # set of z-scores 
+
+	Z.W.D.Sum = unlist(lapply(Z.X,function(x) sum(dnorm(x,ncz)*w.all) ))
+	#plot(Z.X,Z.W.D.Sum)
+
+	x = Z.X[1]
+	loc.p = unlist(lapply(Z.X,function(x) 
+		sum(sim.pows*w.all*dnorm(x,sim.nczs)) /	sum(w.all*dnorm(x,sim.nczs))
+	))
+	loc.p
+
+	### compute local mean power for different intervals
+	### each local power value is weighted by the density 
+	int = seq(x.lim.min,x.lim.max,int.loc)
+	local.power = c()
+	i = 1
+	for (i in 1:(length(int)-1)) local.power = c(local.power,
+		sum(loc.p[Z.X > int[i] & Z.X < int[i+1]]*
+			Z.W.D.Sum[Z.X > int[i] & Z.X < int[i+1]])/
+		sum(Z.W.D.Sum[Z.X > int[i] & Z.X < int[i+1]])	 )		
 	names(local.power) = paste0("lp.",1:length(local.power))
+	local.power
 	res = c(res,local.power)
 
 } #EOF int.loc
+
 
 res
 
@@ -1821,7 +1754,7 @@ res
 ### to be past back to the main program from this function
 return(res)
 
-} ### EOF Compute.Power
+} ### EOF Compute.Power for SDG1
 
 
 #####################################
@@ -1850,23 +1783,11 @@ return(res)
 ### BBB ZingStart #START #Begin of Main Program 
 ### BBB ZingStart #START #Begin of Main Program 
 #####################################
-
-
-
-
-
-
-
-
-
-
 
 
 z.crit = qnorm(alpha/2,lower.tail=FALSE); z.crit
 
 components = length(ncz)
-
-zsds = rep(zsd,length(ncz))[1:components];zsds
 
 
 ### remove NA
@@ -1920,8 +1841,6 @@ names(z.extreme) = c("Ext.Neg","Ext.Pos")
 
 #if (Est.Method == "OF" | TEST4HETEROGENEITY > 0) {
 
-#print("Fitting Old Fashioned")
-
 para.est.OF = old.fashioned.zcurve(z.val.input)
 
 fit = para.est.OF[components+1];fit
@@ -1933,9 +1852,6 @@ para.est.OF = c(para.est.OF[1:components],ncz,zsds)
 
 cp.res = Compute.Power(para.est.OF,Int.Beg=Int.Beg)
 round(cp.res,3)
-
-#print("Check cp.res")
-#print(cp.res)
 
 EDR = cp.res[1];EDR
 ERR = cp.res[4];ERR
@@ -1959,13 +1875,10 @@ round(loc.power,3)
 
 if (Est.Method == "EXT") {
 
-	components = length(ncz)
-	zsds = rep(zsd,components)
-
-	para.est.EXT = extended.zcurve(z.val.input,ncz,zsd);para.est.EXT
+	para.est.EXT = extended.zcurve(z.val.input,ncz,zsds);para.est.EXT
 	fit = para.est.EXT[(3*components+1)];fit
-	para.est.EXT = para.est.EXT[1:(3*components)]
 
+	para.est.EXT = para.est.EXT[1:(3*components)]
 	para.est.EXT
 
 	w.inp = para.est.EXT[1:components];w.inp
@@ -1978,7 +1891,7 @@ if (Est.Method == "EXT") {
 	zsds = para.est.EXT[(2*components+1):(3*components)]
 	zsds
 
-	if (max(zsds) < 1.1) {
+	if (max(zsds) < 1.05) {
 		cp.res = Compute.Power(para.est.EXT,Int.Beg=Int.Beg)
 	} else {
 		cp.res = Compute.Power.SDG1(para.est.EXT)
@@ -1988,7 +1901,6 @@ if (Est.Method == "EXT") {
 
 	EDR = cp.res[1];EDR
 	ERR = cp.res[4];ERR
-	#OSR = cp.res[7];OSR
 
 	#print("Check")
 	#print(cp.res)
@@ -2024,7 +1936,7 @@ if(Est.Method == "EM" & boot.iter == 0) {
 	summary(z.res)     
 	para.est.EM = c(summary(z.res, type="parameters")$coefficients)
 	para.est.EM = para.est.EM[c((components+1):(2*components),1:components)]
-	para.est.EM = c(para.est.EM,rep(1,7))
+	para.est.EM = c(para.est.EM,ncz)
 	para.est.EM
 	
 	fit = z.res$fit$Q
@@ -2053,6 +1965,50 @@ if(Est.Method == "EM" & boot.iter == 0) {
 } 
 
 
+
+### use only for testing, replaced by OF
+if(Est.Method == "density" & boot.iter == 0) {
+
+	print(paste("Est.Method = ",Est.Method))
+
+	components = length(ncz)	
+	#summary(z.val.input)
+	#print("Fitting EM")
+	z.res = run.zcurve(z.val.input,Est.Method="density",boot.iter=boot.iter,
+		Int.Beg=Int.Beg,Int.End=Int.End,parallel=parallel)
+	summary(z.res)     
+	para.est.EM = c(summary(z.res, type="parameters")$coefficients)
+	para.est.EM = para.est.EM[c((components+1):(2*components),1:components)]
+	para.est.EM = c(para.est.EM,ncz)
+	para.est.EM
+	
+	fit = z.res$fit$objective
+
+	w.inp =	 summary(z.res, type="parameters")$coefficients[(components+1):(2*components)]
+	round(w.inp,3)
+
+	#w.all = w.sig/(pow.dir+sign.error)
+	#w.all = w.all/sum(w.all)
+	#round(w.all,3)
+
+	cp.res = Compute.Power(Int.Beg = Int.Beg,c(w.inp,ncz,zsds))
+	round(cp.res,3)
+
+	w.all = cp.res[which(substring(names(cp.res),1,5) == "w.all")]
+	round(w.all,3)
+	sum(w.all)
+
+	loc.power = cp.res[which(substring(names(cp.res),1,2) == "lp")]
+	round(loc.power,3)
+
+	EDR = z.res$coefficients[2];EDR
+	ERR = z.res$coefficients[1];ERR
+
+	print("Finished density")
+
+} #EOF density
+
+
 ### ADD RESULTS
 
 FDR = round((1/EDR - 1)*(alpha/(1-alpha)),2);
@@ -2079,11 +2035,11 @@ names(p.bias) = c("OBS.JS","EXP.JS","EJS.p")
 
 res.text = c(res[1:4],p.bias[3])
 
-
-print("RESULTS")
-print(res.text)
-
 res.zsds = zsds
+
+
+#print("RESULTS")
+#print(res.text)
 
 ### END OF ADD RESULTS
 
@@ -2103,14 +2059,12 @@ if (Show.Histogram) {
 		Draw.Zcurve.All(z.val.input,w=w.all,ncz=ncz,zsds=zsds,cola=col.zcurve,
 			Ltype=1,Lwidth = 4,x.start=Int.Beg,x.end=Int.End)
 		}
-
 	if (Show.Zcurve.All & max(zsds) > 1.1) {
-		Draw.Zcurve.All.SDG1(w=w.all,ncz=ncz,zsds=zsds,cola=col.zcurve,
+		Draw.Zcurve.All.SDG1(w=w.inp,ncz=ncz,zsds=zsds,cola=col.zcurve,
 			Ltype = 3,Lwidth = 4,x.start=x.lim.min,x.end=x.lim.max)
-		Draw.Zcurve.All.SDG1(w=w.all,ncz=ncz,zsds=zsds,cola=col.zcurve,
+		Draw.Zcurve.All.SDG1(w=w.inp,ncz=ncz,zsds=zsds,cola=col.zcurve,
 			Ltype=1,Lwidth = 4,x.start=Int.Beg,x.end=Int.End)
 		}
-
 
 	if (Show.Zcurve.Sig) {
 		Draw.Zcurve.Sig(z.val.input,ncz=ncz,zsds=zsds,w.sig,cola=col.zcurve,
@@ -2213,25 +2167,18 @@ if (boot.iter > 0 & Show.Histogram) {
 
 	if (Show.KD) Draw.KD(z.val.input,w.all,cola=col.kd)
 
-	if (Show.Zcurve.All & max(zsds) < 1.1) {
+	if (Show.Zcurve.All & max(zsds) < 1.05) {
 		Draw.Zcurve.All(z.val.input,w=w.all,ncz=ncz,zsds=zsds,cola=col.zcurve,
 			Ltype=3,Lwidth = 4,x.start=x.lim.min,x.end=x.lim.max)
 		Draw.Zcurve.All(z.val.input,w=w.all,ncz=ncz,zsds=zsds,cola=col.zcurve,
 			Ltype=1,Lwidth = 4,x.start=Int.Beg,x.end=Int.End)
 		}
 
-	if (Show.Zcurve.All & max(zsds) > 1.1) {
+	if (Show.Zcurve.All & max(zsds) > 1.05) {
 		Draw.Zcurve.All.SDG1(w=w.all,ncz=ncz,zsds=zsds,cola=col.zcurve,
 			Ltype = 3,Lwidth = 4,x.start=x.lim.min,x.end=x.lim.max)
 		Draw.Zcurve.All.SDG1(w=w.all,ncz=ncz,zsds=zsds,cola=col.zcurve,
 			Ltype=1,Lwidth = 4,x.start=Int.Beg,x.end=Int.End)
-		}
-
-	if (Show.Zcurve.All) {
-		Draw.Zcurve.All(z.val.input,w=w.all,ncz=ncz,zsds=zsds,cola=col.zcurve,
-			Ltype=3,x.start=x.lim.min,x.end=x.lim.max)
-		Draw.Zcurve.All(z.val.input,w=w.all,ncz=ncz,zsds=zsds,cola=col.zcurve,
-			Ltype=1,x.start=Int.Beg,x.end=Int.End)
 		}
 
 	if (Show.Zcurve.Sig) {
