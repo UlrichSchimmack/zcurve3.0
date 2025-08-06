@@ -170,7 +170,7 @@ res.boot = c()
 
 boot.i = 1
 for (boot.i in 1:boot.run ) {
-	print(boot.i)
+	#print(boot.i)
 	zboot = sample(z.val.input,replace=TRUE)
 	ncz = 2
 	zsds = 1
@@ -1136,13 +1136,19 @@ if (Show.Significance) {
 Get.Densities = function(zval,bw="nrd0",d.x.min=0,d.x.max=6,Augment=TRUE) {
 
 
-#zval = z.val.input;d.x.min = Int.Beg; d.x.max = 6;bw=bw.draw
+#zval = z.val.input;d.x.min = Int.Beg; d.x.max = 6;bw=bw.est
 #zval = z.val.input[z.val.input > Int.Beg];d.x.max = 6;d.x.min = z.crit;bw = .2
 
 ### find the maximum z-score. This is only needed if the maximum z-score is below Int.End
 max.z = Int.End
 if (max(zval) < d.x.max) max.z = max(zval)
 max.z
+
+z.check = length(z.val.input[z.val.input > round(Int.Beg,1)  
+	& z.val.input < round(Int.Beg,1) + 1.5 + 4*bw.est])
+z.check
+
+if(z.check > 30) { 
 
 Z.Density = bkde(z.val.input[z.val.input > round(Int.Beg,1)  
 	& z.val.input < round(Int.Beg,1) + 1.5 + 4*bw.est],bandwidth=.05,
@@ -1153,10 +1159,14 @@ D = D[D$ZX > round(Int.Beg,1) + 4*bw.est & D$ZX < Int.Beg + 1,]
 summary(D$ZX)
 dim(D)
 
+#plot(D$ZX,D$ZY)
 
 d.reg = -lm(D$ZY ~ D$ZX)$coefficients[2];d.reg
 
 Augment.Factor = Augment.Factor + d.reg
+
+} 
+
 
 ### Augment z-scores on the left side of Interval to avoid downward trend 
 ### of kernal density function (assumes values go to 0)
@@ -1521,9 +1531,21 @@ return(c(res))
 Compute.Power = function(para,Int.Beg=z.crit,BOOT=FALSE) {
 
 #para = para.est.OF
+#para = res.1$w.all
 
-z.ext = z.extreme
-if (two.sided) z.ext = z.ext[2] else z.ext = sum(z.ext);z.ext
+z.ext.all = length(z.val.input[z.val.input > Int.End]) / 
+	length(z.val.input)
+z.ext.all
+
+z.ext.sig = length(z.val.input[z.val.input > Int.End]) / 
+	length(z.val.input[z.val.input > z.crit])
+z.ext.sig
+
+z.ext.inp = length(z.val.input[z.val.input > Int.End]) / 
+	length(z.val.input[z.val.input > Int.Beg])
+z.ext.inp
+
+
 #print("Check Extreme")
 #print(z.ext)
 
@@ -1553,7 +1575,11 @@ pow.ext = c(pow,1)
 pow.sel = pnorm(ncz,Int.Beg) + pnorm(-ncz,Int.Beg);pow.sel
 pow.sel.ext = c(pow.sel,1)
 
-w.inp.ext = c(w.inp*(1-z.ext), z.ext)          # estimated weights
+p.ext = pnorm(ncz,Int.End);p.ext # probability to produce an extreme result
+p.ext = p.ext * w.inp
+#z.ext.inp = z.ext.inp - sum(p.ext)
+
+w.inp.ext = c(w.inp*(1-z.ext.inp), z.ext.inp)          # estimated weights
 
 w.all.ext   <- (w.inp.ext + w.inp.ext*(1-pow.sel.ext)
    /(pow.sel.ext)) / sum(w.inp.ext + w.inp.ext*(1-pow.sel.ext)
@@ -1572,6 +1598,13 @@ w.sig = w.sig.ext[1:components]
 
 
 ERR = sum(w.sig.ext*pow.dir.ext);ERR
+
+if (ERR > 1) ERR = 1
+if (EDR > 1) EDR = 1
+
+if (ERR < alpha/2) ERR = alpha/2
+if (EDR < alpha) EDR = alpha 
+
 
 ERR.pos = NA
 ERR.neg = NA
@@ -1646,57 +1679,84 @@ para = para.est.EXT
 }
 
 
-Compute.Power.SDG1 = function(para,BOOT=FALSE) {
+###############################################################
 
-z.ext = z.extreme
-if (two.sided) z.ext = z.ext[2] else z.ext = sum(z.ext)
-z.ext
+Compute.Power.SDG1 = function(para,BOOT=FALSE,Int.Beg=Int.Beg) {
 
-w.inp = para[1:components]
-est.ncz = para[(1+components):(2*components)]
-est.zsds = para[(1+2*components):(3*components)]
+z.ext.all = length(z.val.input[z.val.input > Int.End]) / 
+	length(z.val.input)
+z.ext.all
+
+z.ext.sig = length(z.val.input[z.val.input > Int.End]) / 
+	length(z.val.input[z.val.input > z.crit])
+z.ext.sig
+
+z.ext.inp = length(z.val.input[z.val.input > Int.End]) / 
+	length(z.val.input[z.val.input > Int.Beg])
+z.ext.inp
+
+
+#para = para.est.EXT
+#para = c(w.inp,ncz,zsds)
+
+components = length(ncz)
+
+w.inp = para[1:components];w.inp
+if (Int.Beg == 0) w.all = w.inp;w.all
+est.cw.all = w.all
+est.ncz = para[(1+components):(2*components)];est.ncz
+est.zsds = para[(1+2*components):(3*components)];est.zsds
+est.zncz.sd = sqrt(est.zsds^2 - 1);est.ncz.sd
+est.components = length(est.ncz)
 
 ###
 
-components = length(est.ncz)
+zx.bw = .01
+zx = seq(Int.Beg,Int.End,zx.bw)
+pow.zx.dir = pnorm(abs(zx),1.96) 
+pow.zx.sign.error = + pnorm(-1.96,abs(zx))
 
-sim.bw = .1
-
-sim.nczs = seq(x.lim.min,x.lim.max,sim.bw)
-sim.pows = pnorm(sim.nczs,z.crit) + pnorm(-sim.nczs,z.crit)
-sim.pow.sel = pnorm(sim.nczs,Int.Beg) + pnorm(-Int.Beg,sim.nczs)
-
-comp.i = 1
-w.set = c()
-for (comp.i in 1:components) {
-	w.nczs = dnorm(sim.nczs,est.ncz[comp.i], sqrt(est.zsds[comp.i]^2-1) ) 
-	w.all = w.inp[components]*w.nczs/sim.pow.sel
-	w.all = w.all / sum(w.all)
-	w.set = rbind(w.set,w.nczs)
+i = 1
+est.wd.all = c()
+for (i in 1:est.components) {
+	if (est.zncz.sd[i] == 0) {
+		wd = rep(0,length(zx))
+		wd[which(round(zx,2) == round(est.ncz[i],2))] = 1
+	} else {
+		wd = dnorm(zx,est.ncz[i],est.zncz.sd[i])
+	}
+	wd = wd/sum(wd)
+	wd = wd*est.cw.all[i]
+	sum(wd)
+	est.wd.all = rbind(est.wd.all,wd)
 }
 
-dim(w.set)
-w.all = colSums(w.set)
-w.all = w.all / sum(w.all)
+dim(est.wd.all)
 
-sim.pows.ext = c(sim.pows,1)
-w.all.ext = c(w.all*(1-z.ext),z.ext)
+est.wd.all = colSums(est.wd.all)
+est.wd.all = est.wd.all/sum(est.wd.all)
+sum(est.wd.all)
 
-w.sig.ext = w.all.ext*sim.pows.ext
-w.sig.ext = w.sig.ext / sum(w.sig.ext)
+#plot(zx,est.wd.all)
 
-if (1 == 2) {
-sim.nczs.ext = c(sim.nczs,x.lim.max+1)
-plot(sim.nczs.ext,w.all.ext/sim.bw,ylim=c(0,1),col="purple3")
-par(new=TRUE)
-plot(sim.nczs.ext,w.sig.ext/sim.bw,ylim=c(0,1),pch=15,col="forestgreen")
-}
+p.ext = pnorm(Int.End,zx,lower.tail=FALSE);p.ext # probability to produce an extreme result
+sum(p.ext)
+p.ext = p.ext * est.wd.all;p.ext;sum(p.ext)
 
-EDR = sum(sim.pows.ext*w.all.ext)/sum(w.all.ext);EDR
-ERR = sum(sim.pows.ext*w.sig.ext)/sum(w.sig.ext);ERR
+#z.ext.all = z.ext.all - sum(p.ext)
+#if(z.ext.all < 0) z.ext.all = 0
 
-if (ERR > 100) ERR = 1
-if (EDR > 100) EDR = 1
+est.wd.all.ext = c(est.wd.all*(1-p.ext),z.ext.all)
+pow.zx.dir.ext = c(pow.zx.dir,1)
+pow.zx.ext = c(pow.zx.dir+pow.zx.sign.error,1)
+est.wd.sig.ext = est.wd.all.ext*pow.zx.ext
+est.wd.sig.ext = est.wd.sig.ext/sum(est.wd.sig.ext)
+
+EDR = sum(pow.zx.ext*est.wd.all.ext);EDR
+ERR = sum(pow.zx.dir.ext*est.wd.sig.ext)/sum(est.wd.sig.ext);ERR
+
+if (ERR > 1) ERR = 1
+if (EDR > 1) EDR = 1
 
 if (ERR < alpha/2) ERR = alpha/2
 if (EDR < alpha) EDR = alpha 
@@ -1875,6 +1935,8 @@ round(loc.power,3)
 
 if (Est.Method == "EXT") {
 
+	components = length(ncz)
+
 	para.est.EXT = extended.zcurve(z.val.input,ncz,zsds);para.est.EXT
 	fit = para.est.EXT[(3*components+1)];fit
 
@@ -1891,10 +1953,15 @@ if (Est.Method == "EXT") {
 	zsds = para.est.EXT[(2*components+1):(3*components)]
 	zsds
 
+	print("zsds")
+	print(zsds)
+
 	if (max(zsds) < 1.05) {
+		print("SD==1")
 		cp.res = Compute.Power(para.est.EXT,Int.Beg=Int.Beg)
 	} else {
-		cp.res = Compute.Power.SDG1(para.est.EXT)
+		print("SD > 1")
+		cp.res = Compute.Power.SDG1(para.est.EXT,Int.Beg=Int.Beg)
 	}			
 
 	round(cp.res,3)	
@@ -1907,8 +1974,8 @@ if (Est.Method == "EXT") {
 
 	w.all = cp.res[which(substring(names(cp.res),1,5) == "w.all")]
 	if (components == 1) w.all = 1
-	w.all
-	sum(w.all)
+
+	if (Int.Beg == 0) w.all = w.inp
 
 	w.sig = cp.res[which(substring(names(cp.res),1,5) == "w.sig")]
 	if (components == 1) w.sig = 1
