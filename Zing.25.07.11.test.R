@@ -2286,6 +2286,31 @@ if (boot.iter > 0 & Est.Method == "EXT") {
 }
 
 
+if (boot.iter > 0 & Est.Method %in% c("CLU-W","CLU-B") {
+
+
+	res.ci = summary(z.clu)$coefficients[1:2,]
+	res.ci = rbind(c(ODR,ODR.low,ODR.high),res.ci)
+	rownames(res.ci)[1] = "ODR"
+	round(res.ci,3)
+	dim(res.ci)
+
+	res.ci = rbind(res.ci,(1/res.ci[2,] - 1)*(alpha/(1-alpha)) )
+	rownames(res.ci)[4] = "FDR"
+
+	
+	res.text = rbind(res.ci,c(p.bias))
+	res.text = round(res.text,3)
+
+	rownames(res.text)[5] = "BIAS"
+	round(res.text,3)
+	
+	res = res.text
+	res
+
+}
+
+
 if (boot.iter > 0 & Show.Histogram) {
 
 	Draw.Histogram(w.all,results=res.text,cola=col.hist,Write.CI = TRUE)
