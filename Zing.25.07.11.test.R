@@ -89,6 +89,7 @@ col.hist <- "blue3"
 col.kd <- "green3"
 
 Est.Method <- "OF"                  # Estimation method: "OF", "EM", or "EXT"
+                                    # Clustered Data: "CLU-W" (weighted),"CLU-B" (bootstrap)   
 Int.Beg <- z.crit                   # Start of modeling interval (default = critical z)
 Int.End <- 6                        # End of modeling interval (z > 6 = power = 1)
 
@@ -149,7 +150,7 @@ print("Parameter OK")
 ##################################################################
 ##################################################################
 
-Zing = function(z.val.input,lp=c() ) {
+Zing = function(z.val.input,cluster.id=c(),lp=c()) {
 
 
 ##################################################################
@@ -158,8 +159,13 @@ Zing = function(z.val.input,lp=c() ) {
 
 #######################################################################
 
+     
+ 
 
-### FUN.1 - HETEROGENEITY TEST
+###########################################################
+
+
+### FUN.2 - HETEROGENEITY TEST
 
 run.heterogeneity.test = function(z.val.input,boot.run = 500, 
 	fit.ci = c(.01,.025,.05,.10,.17,.20,.50,.80,.83,.90,.95,.975,.99)
@@ -584,7 +590,7 @@ hist(c(0),main="",ylim=c(ymin,ymax),ylab="",xlab="",xlim=c(x.lim.min,x.lim.max),
 	########
 
 	#TESTING
-	#Write.CI = TRUE;results=res.text;Show.Text = FALSE; Draw.Histogram(w.all,results=res.text,cola=col.hist)
+	#y.text = ymax;Write.CI = TRUE;results=res.text;Show.Text = FALSE; Draw.Histogram(w.all,results=res.text,cola=col.hist)
 
 	i = 0
 	results.x = x.lim.max 
@@ -597,6 +603,13 @@ hist(c(0),main="",ylim=c(ymin,ymax),ylab="",xlab="",xlim=c(x.lim.min,x.lim.max),
 	text(results.x+0.1,y.text-y.line*i,paste0(toString(format(n.z,big.mark=",")),
 		" tests "),pos=2,cex = letter.size)
 	i = i + 1.5
+
+	if (Est.Method %in% c("CLU-B","CLU-W") ) {
+		text(results.x+0.1,y.text-y.line*i,paste0(toString(format(cluster.k,big.mark=",")),
+			" articles "),pos=2,cex = letter.size)
+		i = i + 1.5
+	}
+
 	text(results.x+0.1,y.text-y.line*i,paste0(toString(format(n.z.sig,big.mark=","))," significant "),
 	  pos=2,cex = letter.size)
 	i = i + 1.5
@@ -764,7 +777,8 @@ hist(c(0),main="",ylim=c(ymin,ymax),ylab="",xlab="",xlim=c(x.lim.min,x.lim.max),
 #		pos=2,cex=letter.size.1)
 
 	i = i + 2
-	if (boot.iter > 0 & Write.CI == FALSE) text(results.x,ymax-y.line*i,
+
+	if (Est.Method == "OF" & boot.iter > 0 & Write.CI == FALSE) text(results.x,ymax-y.line*i,
 		"WAIT FOR BOOSTRAPPED CIs",
 		pos=2,cex=letter.size,col="red")
 
@@ -1844,6 +1858,11 @@ return(res)
 ### BBB ZingStart #START #Begin of Main Program 
 #####################################
 
+if (length(cluster.id > 0)) {
+    z.clu.input = zcurve_data(paste("z = ", z.val.input), id = cluster.id)
+    tab = table(cluster.id);tab
+    cluster.k = length(tab);cluster.k
+}
 
 z.crit = qnorm(alpha/2,lower.tail=FALSE); z.crit
 
@@ -1998,35 +2017,31 @@ if(Est.Method == "EM" & boot.iter == 0) {
 	components = length(ncz)	
 	#summary(z.val.input)
 	#print("Fitting EM")
-	z.res = run.zcurve(z.val.input,Est.Method="EM",boot.iter=boot.iter,
+	res.em = run.zcurve(z.val.input,Est.Method="EM",boot.iter=boot.iter,
 		Int.Beg=Int.Beg,Int.End=Int.End,parallel=parallel)
-	summary(z.res)     
-	para.est.EM = c(summary(z.res, type="parameters")$coefficients)
+	summary(res.em)     
+	para.est.EM = c(summary(res.em, type="parameters")$coefficients)
 	para.est.EM = para.est.EM[c((components+1):(2*components),1:components)]
 	para.est.EM = c(para.est.EM,ncz)
 	para.est.EM
 	
-	fit = z.res$fit$Q
+	fit = res.em$fit$Q
 
-	w.inp =	 summary(z.res, type="parameters")$coefficients[(components+1):(2*components)]
+	w.inp =	 summary(res.em, type="parameters")$coefficients[(components+1):(2*components)]
 	round(w.inp,3)
 
-	#w.all = w.sig/(pow.dir+sign.error)
-	#w.all = w.all/sum(w.all)
-	#round(w.all,3)
+	cp.em = Compute.Power(Int.Beg = Int.Beg,c(w.inp,ncz,zsds))
+	round(cp.em,3)
 
-	cp.res = Compute.Power(Int.Beg = Int.Beg,c(w.inp,ncz,zsds))
-	round(cp.res,3)
-
-	w.all = cp.res[which(substring(names(cp.res),1,5) == "w.all")]
+	w.all = cp.em[which(substring(names(cp.em),1,5) == "w.all")]
 	round(w.all,3)
 	sum(w.all)
 
 	loc.power = cp.res[which(substring(names(cp.res),1,2) == "lp")]
 	round(loc.power,3)
 
-	EDR = z.res$coefficients[2];EDR
-	ERR = z.res$coefficients[1];ERR
+	EDR = res.em$coefficients[2];EDR
+	ERR = res.em$coefficients[1];ERR
 
 	#print("Finished EM")
 } 
@@ -2076,12 +2091,55 @@ if(Est.Method == "density" & boot.iter == 0) {
 } #EOF density
 
 
+####################################################################
+
+
+if (Est.Method %in% c("CLU-W","CLU-B") & boot.iter >= 0) {
+
+	bb = Int.End
+    if (bb > 6) bb = 6
+
+	method = "b"
+
+    if (Est.Method == "CLU-W") print("NOT SUPPORTED") #method = "w"
+    if (Est.Method == "CLU-B") method = "b"
+
+    z.clu = zcurve_clustered(z.clu.input,method = method, bootstrap=boot.iter,
+            control=list(method="EM",a = Int.Beg,b = bb,
+            sig_level=alpha,max_iter = max_iter,max_iter_boot = max_iter_boot))
+
+	summary(z.clu)     
+
+	fit = z.clu$fit$Q
+
+	w.inp =	 summary(z.clu, type="parameters")$coefficients[(components+1):(2*components)]
+	round(w.inp,3)
+
+	cp.res = Compute.Power(Int.Beg = Int.Beg,c(w.inp,ncz,zsds))
+	round(cp.res,3)
+
+	w.all = cp.res[which(substring(names(cp.res),1,5) == "w.all")]
+	round(w.all,3)
+	sum(w.all)
+
+	loc.power = cp.res[which(substring(names(cp.res),1,2) == "lp")]
+	round(loc.power,3)
+
+	EDR = z.clu$coefficients[2];EDR
+	ERR = z.clu$coefficients[1];ERR
+
+
+} # EOF Cluster Method 
+
+
+########################################################## 
+
+
 ### ADD RESULTS
 
 FDR = round((1/EDR - 1)*(alpha/(1-alpha)),2);
 names(FDR) = "FDR"
 FDR
-
 
 res = c(ODR,ERR,EDR,FDR,fit)
 names(res) = c("ODR","ERR","EDR","FDR","FIT")
@@ -2178,7 +2236,7 @@ return.results = list(
 ########################################################################
 
 ### If Confidence Intervals are requested, compute CI (boot.iter > 0)
-if (boot.iter > 0 & Est.Method != "EXT") {
+if (boot.iter > 0 & Est.Method %in% c("OF","EM") )  {
 
 	res.with.ci = get.ci.info(Est.Method = Est.Method)
 
