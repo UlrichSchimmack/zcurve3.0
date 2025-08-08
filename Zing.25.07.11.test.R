@@ -2286,7 +2286,7 @@ if (boot.iter > 0 & Est.Method == "EXT") {
 }
 
 
-if (boot.iter > 0 & Est.Method %in% c("CLU-W","CLU-B") {
+if (boot.iter > 0 & Est.Method %in% c("CLU-W","CLU-B") ) {
 
 
 	res.ci = summary(z.clu)$coefficients[1:2,]
