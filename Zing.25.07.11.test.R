@@ -100,7 +100,7 @@ zsds = rep(zsd,components)          # one SD for each component
 
 just <- 0.6                         # Cutoff for "just significant" z-values (used in optional bias test)
 
-ZSD.FIXED <- FALSE                  # Fix SD values for EXT method 
+ZSDS.FIXED <- FALSE                 # Fix SD values for EXT method 
 NCZ.FIXED <- FALSE                  # Fix NCZ values for EXT method
 W.FIXED   <- FALSE                  # Fix weights for EXT method
 
@@ -1149,6 +1149,7 @@ if (Show.Significance) {
 
 Get.Densities = function(zval,bw="nrd0",d.x.min=0,d.x.max=6,Augment=TRUE) {
 
+print("OK1")
 
 #zval = z.val.input;d.x.min = Int.Beg; d.x.max = 6;bw=bw.est
 #zval = z.val.input[z.val.input > Int.Beg];d.x.max = 6;d.x.min = z.crit;bw = .2
@@ -1158,26 +1159,30 @@ max.z = Int.End
 if (max(zval) < d.x.max) max.z = max(zval)
 max.z
 
+#max.z = 6
+
 z.check = length(z.val.input[z.val.input > round(Int.Beg,1)  
 	& z.val.input < round(Int.Beg,1) + 1.5 + 4*bw.est])
 z.check
 
-if(z.check > 30) { 
+if(Augment.Factor > 0.5 & z.check > 20) { 
+
+print("OK2")
 
 Z.Density = bkde(z.val.input[z.val.input > round(Int.Beg,1)  
-	& z.val.input < round(Int.Beg,1) + 1.5 + 4*bw.est],bandwidth=.05,
+	& z.val.input < round(Int.Beg,1) + 1.5 + 4*bw.est],bandwidth=bw.est,
 	range=c(Int.Beg,Int.Beg+1))
 D = data.frame(Z.Density$x,Z.Density$y)
+dim(D)
 colnames(D) = c("ZX","ZY")
-D = D[D$ZX > round(Int.Beg,1) + 4*bw.est & D$ZX < Int.Beg + 1,]
-summary(D$ZX)
+D = D[D$ZX > Int.Beg + 6*bw.est,]
 dim(D)
 
 #plot(D$ZX,D$ZY)
 
 d.reg = -lm(D$ZY ~ D$ZX)$coefficients[2];d.reg
 
-Augment.Factor = Augment.Factor + d.reg
+if (Int.Beg > 1) Augment.Factor = Augment.Factor + d.reg
 
 } 
 
@@ -1185,8 +1190,9 @@ Augment.Factor = Augment.Factor + d.reg
 ### Augment z-scores on the left side of Interval to avoid downward trend 
 ### of kernal density function (assumes values go to 0)
 
+print("OK3")
 
-if (Augment) { 
+if (Augment == TRUE) { 
 
 	AUG = c()
 	n.AUG = round(Augment.Factor*length(zval[zval > d.x.min & zval < d.x.min+bw.aug]));n.AUG
@@ -1203,7 +1209,10 @@ if (Augment) {
 
 #print(summary(Z.INT.USE))
 
-Z.Density = bkde(Z.INT.USE,bandwidth=bw.est,range=c(d.x.min-bw.aug,d.x.max)) 
+print("OK4")
+
+
+Z.Density = bkde(Z.INT.USE,bandwidth=bw,range=c(d.x.min-bw.aug,d.x.max)) 
 val.max = d.x.max
 D = data.frame(Z.Density$x,Z.Density$y)
 colnames(D) = c("ZX","ZY")
@@ -1221,6 +1230,9 @@ sum(D$ZY*bar.width)
 #print("End Augment check")
 
 return(D)
+
+print("OK5")
+
 
 }  ### End of Get Densities 
 
@@ -1501,7 +1513,7 @@ if (NCZ.FIXED) {
 	highlim = c(highlim,rep(Int.End,components))
 }
 
-if (ZSD.FIXED) { 
+if (ZSDS.FIXED) { 
 	startval = c(startval,zsds)
 	lowlim = c(lowlim,zsds)
 	highlim = c(highlim,zsds)
@@ -1522,6 +1534,7 @@ if (TESTING == TRUE) Plot.Fitting = TRUE
 
 auto = nlminb(startval,ext.zcurve.fitting,lower=lowlim,upper=highlim,control=list(eval.max=1000))
 para = auto$par
+para[1:components] = para[1:components]/sum(para[1:components])
 para
 
 fit = auto$objective;fit
@@ -1588,10 +1601,6 @@ pow.ext = c(pow,1)
 ### get power values for the components (ncz)
 pow.sel = pnorm(ncz,Int.Beg) + pnorm(-ncz,Int.Beg);pow.sel
 pow.sel.ext = c(pow.sel,1)
-
-p.ext = pnorm(ncz,Int.End);p.ext # probability to produce an extreme result
-p.ext = p.ext * w.inp
-#z.ext.inp = z.ext.inp - sum(p.ext)
 
 w.inp.ext = c(w.inp*(1-z.ext.inp), z.ext.inp)          # estimated weights
 
@@ -1720,6 +1729,7 @@ if (Int.Beg == 0) w.all = w.inp;w.all
 est.cw.all = w.all
 est.ncz = para[(1+components):(2*components)];est.ncz
 est.zsds = para[(1+2*components):(3*components)];est.zsds
+est.zsds[est.zsds < 1] = 1  
 est.zncz.sd = sqrt(est.zsds^2 - 1);est.ncz.sd
 est.components = length(est.ncz)
 
@@ -1839,6 +1849,9 @@ return(res)
 
 
 
+#TESTING 
+#z.val.input = z.rep
+#z.val.input = z.rep[z.rep < 6]
 
 
 
@@ -1963,8 +1976,11 @@ if (Est.Method == "EXT") {
 	para.est.EXT
 
 	w.inp = para.est.EXT[1:components];w.inp
-	w.inp = w.inp/sum(w.inp)
+	sum(w.inp)
 	round(w.inp,3)
+
+	if (W.FIXED) w.inp = w.fix
+
 
 	ncz = para.est.EXT[(components+1):(2*components)]
 	ncz
