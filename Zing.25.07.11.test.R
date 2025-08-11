@@ -2129,15 +2129,16 @@ if(Est.Method == "density" & boot.iter == 0) {
 ####################################################################
 
 
-if (Est.Method %in% c("CLU-W","CLU-B") & boot.iter >= 0) {
+if (Est.Method %in% c("CLU", "CLU-W","CLU-B") & boot.iter >= 0) {
 
 	bb = Int.End
     if (bb > 6) bb = 6
+	
+	print("USING CLUSTER OPTION BOOTSTRAP")
 
 	method = "b"
 
-    if (Est.Method == "CLU-W") print("NOT SUPPORTED") #method = "w"
-    if (Est.Method == "CLU-B") method = "b"
+    if (Est.Method == "CLU-W") print("CLU-W NOT SUPPORTED") #method = "w"
 
     z.clu = zcurve_clustered(z.clu.input,method = method, bootstrap=boot.iter,
             control=list(method="EM",a = Int.Beg,b = bb,
