@@ -1984,8 +1984,8 @@ round(loc.power,3)
 
 #print("Finish Old Fashioned")
 
-#}
-
+} # EOF if Est.Method OF
+ 
 #########################################
 ### EXTENDED Z-CURVE
 
