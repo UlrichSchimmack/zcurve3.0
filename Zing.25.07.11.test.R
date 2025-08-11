@@ -3,7 +3,7 @@
 ### SETTING PARAMETERS FOR Z-CURVE MODEL
 ########################################################################
 
-version <- "Version 25.07.30"   # Version label to appear on plots
+version <- "Version 25.08.11"   # Version label to appear on plots
 
 # Optional cleanup 
 # rm(list = ls())
@@ -1955,7 +1955,7 @@ print(Est.Method)
 print("Est.Method")
 
 
-if (Est.Method == "OF" | TEST4HETEROGENEITY > 0) {
+#if (Est.Method == "OF" | TEST4HETEROGENEITY > 0) {
 
 para.est.OF = old.fashioned.zcurve(z.val.input)
 
@@ -1984,7 +1984,7 @@ round(loc.power,3)
 
 #print("Finish Old Fashioned")
 
-} # EOF if Est.Method OF
+#} # EOF if Est.Method OF
  
 #########################################
 ### EXTENDED Z-CURVE
