@@ -1730,7 +1730,7 @@ est.cw.all = w.all
 est.ncz = para[(1+components):(2*components)];est.ncz
 est.zsds = para[(1+2*components):(3*components)];est.zsds
 est.zsds[est.zsds < 1] = 1  
-est.zncz.sd = sqrt(est.zsds^2 - 1);est.ncz.sd
+est.zncz.sd = sqrt(est.zsds^2 - 1);est.zncz.sd
 est.components = length(est.ncz)
 
 ###
@@ -1763,14 +1763,7 @@ sum(est.wd.all)
 
 #plot(zx,est.wd.all)
 
-p.ext = pnorm(Int.End,zx,lower.tail=FALSE);p.ext # probability to produce an extreme result
-sum(p.ext)
-p.ext = p.ext * est.wd.all;p.ext;sum(p.ext)
-
-#z.ext.all = z.ext.all - sum(p.ext)
-#if(z.ext.all < 0) z.ext.all = 0
-
-est.wd.all.ext = c(est.wd.all*(1-p.ext),z.ext.all)
+est.wd.all.ext = c(est.wd.all*(1-z.ext.all),z.ext.all)
 pow.zx.dir.ext = c(pow.zx.dir,1)
 pow.zx.ext = c(pow.zx.dir+pow.zx.sign.error,1)
 est.wd.sig.ext = est.wd.all.ext*pow.zx.ext
@@ -1803,17 +1796,43 @@ res
 
 if (int.loc > 0 & BOOT==FALSE) {
 
-	bar.width = .01 # how fine should be the resolution
-	Z.X = seq(x.lim.min,Int.End,bar.width);summary(Z.X)	 # set of z-scores 
+	zx.bw = .01
+	zx = seq(x.lim.min,x.lim.max,zx.bw)
+	pow.zx.dir = pnorm(abs(zx),1.96) 
+	pow.zx.sign.error = + pnorm(-1.96,abs(zx))
+	pow.zx = pow.zx.dir + pow.zx.sign.error
+	
+	i = 1
+	est.wd.all = c()
+	for (i in 1:est.components) {
+		if (est.zncz.sd[i] == 0) {
+			wd = rep(0,length(zx))
+			wd[which(round(zx,2) == round(est.ncz[i],2))] = 1
+		} else {
+			wd = dnorm(zx,est.ncz[i],est.zncz.sd[i])
+		}
+		wd = wd/sum(wd)
+		wd = wd*est.cw.all[i]
+		sum(wd)
+		est.wd.all = rbind(est.wd.all,wd)
+	}
 
-	Z.W.D.Sum = unlist(lapply(Z.X,function(x) sum(dnorm(x,ncz)*w.all) ))
-	#plot(Z.X,Z.W.D.Sum)
+	dim(est.wd.all)
 
-	x = Z.X[1]
-	loc.p = unlist(lapply(Z.X,function(x) 
-		sum(sim.pows*w.all*dnorm(x,sim.nczs)) /	sum(w.all*dnorm(x,sim.nczs))
+	est.wd.all = colSums(est.wd.all)
+	est.wd.all = est.wd.all/sum(est.wd.all)
+	sum(est.wd.all)
+
+	#plot(zx,est.wd.all)
+
+	sim.z = seq(x.lim.min,x.lim.max,.01)
+	x = sim.z[1]
+	loc.p = unlist(lapply(sim.z,function(x) 
+		sum(pow.zx*dnorm(x,est.wd.all))/sum(dnorm(x,est.wd.all)) 
 	))
+
 	loc.p
+
 
 	### compute local mean power for different intervals
 	### each local power value is weighted by the density 
@@ -1988,8 +2007,8 @@ if (Est.Method == "EXT") {
 	zsds = para.est.EXT[(2*components+1):(3*components)]
 	zsds
 
-	print("zsds")
-	print(zsds)
+	#print("zsds")
+	#print(zsds)
 
 	if (max(zsds) < 1.05) {
 		print("SD==1")
