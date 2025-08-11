@@ -1950,7 +1950,12 @@ names(z.extreme) = c("Ext.Neg","Ext.Pos")
 
 ### OLD FASHIONED Z-CURVE 
 
-#if (Est.Method == "OF" | TEST4HETEROGENEITY > 0) {
+print("Est.Method")
+print(Est.Method)
+print("Est.Method")
+
+
+if (Est.Method == "OF" | TEST4HETEROGENEITY > 0) {
 
 para.est.OF = old.fashioned.zcurve(z.val.input)
 
@@ -2127,7 +2132,6 @@ if(Est.Method == "density" & boot.iter == 0) {
 
 
 ####################################################################
-
 
 if (Est.Method %in% c("CLU", "CLU-W","CLU-B") & boot.iter >= 0) {
 
