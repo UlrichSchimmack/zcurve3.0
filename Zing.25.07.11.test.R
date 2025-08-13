@@ -111,10 +111,11 @@ fixed.false.positives <- 0          # If > 0, constrains proportion of false pos
 n.bars <- 512                       # Number of bars in histogram
 
 Augment <- TRUE                     # Apply correction for bias at lower bound
+Augment.Regression <- FALSE         # Use Slope for Augmentation
 Augment.Factor <- 1                 # Amount of augmentation
 
 bw.est <- 0.05                      # Bandwidth for kernel density (lower = less smoothing, higher = more smoothing)
-bw.aug <-  .20						 # Width of Augmentation interval
+bw.aug <-  .20					 # Width of Augmentation interval
 
 ### INPUT RESTRICTIONS
 
@@ -987,7 +988,17 @@ if (1 == 2) {
 	x.end = x.lim.max
 	Lwidth = 2
 	cola = col.zcurve
+	w = c(0,0,1,0,0,0,0)
 	w = w.all
+
+    w = 1
+	ncz = 2.8
+	zsds = 1    
+
+	w.all = z.test$w.all
+	w = w.all
+
+
 	Ltype = 1
 }
 
@@ -999,7 +1010,10 @@ n.bars = length(Z.Density.X);n.bars
 Dens	= c()
 for(i in 1:n.bars) {
 	for (j in 1:length(ncz)) {
-		Dens = c(Dens,dnorm(Z.Density.X[i],ncz[j],zsds[j]))
+		Dens = c(Dens,
+		dnorm(Z.Density.X[i],ncz[j],zsds[j]) +
+		dnorm(-Z.Density.X[i],ncz[j],zsds[j])
+		)
 	}
 }
 Dens = matrix(Dens,length(ncz),byrow=FALSE)
@@ -1022,6 +1036,12 @@ d.dense.sel
 cbind(Z.Density.X,z.est)
 
 scale = d.hist.sel/d.dense.sel;scale
+
+print("SCALE")
+print("SCALE")
+print("SCALE")
+print("SCALE")
+print(scale)
 
 #par(new=TRUE)
 
@@ -1149,8 +1169,6 @@ if (Show.Significance) {
 
 Get.Densities = function(zval,bw="nrd0",d.x.min=0,d.x.max=6,Augment=TRUE) {
 
-print("OK1")
-
 #zval = z.val.input;d.x.min = Int.Beg; d.x.max = 6;bw=bw.est
 #zval = z.val.input[z.val.input > Int.Beg];d.x.max = 6;d.x.min = z.crit;bw = .2
 
@@ -1165,24 +1183,23 @@ z.check = length(z.val.input[z.val.input > round(Int.Beg,1)
 	& z.val.input < round(Int.Beg,1) + 1.5 + 4*bw.est])
 z.check
 
-if(Augment.Factor > 0.5 & z.check > 20) { 
-
-print("OK2")
+if(Augment.Regression & z.check > 20) { 
 
 Z.Density = bkde(z.val.input[z.val.input > round(Int.Beg,1)  
-	& z.val.input < round(Int.Beg,1) + 1.5 + 4*bw.est],bandwidth=bw.est,
-	range=c(Int.Beg,Int.Beg+1))
+	& z.val.input < round(Int.Beg,1) + 2 + 4*bw.est],bandwidth=bw.est,
+	range=c(Int.Beg,Int.Beg+2))
 D = data.frame(Z.Density$x,Z.Density$y)
 dim(D)
 colnames(D) = c("ZX","ZY")
-D = D[D$ZX > Int.Beg + 6*bw.est,]
+D = D[D$ZX > Int.Beg + 6*bw.est & D$ZX < max(D$ZX) - 6*bw.est,]
 dim(D)
+summary(D$ZX)
 
 #plot(D$ZX,D$ZY)
 
-d.reg = -lm(D$ZY ~ D$ZX)$coefficients[2];d.reg
+d.reg = -lm(scale(D$ZY) ~ scale(D$ZX))$coefficients[2];d.reg
 
-if (Int.Beg > 1) Augment.Factor = Augment.Factor + d.reg
+if (Int.Beg > 1) Augment.Factor = d.reg
 
 } 
 
@@ -1190,13 +1207,11 @@ if (Int.Beg > 1) Augment.Factor = Augment.Factor + d.reg
 ### Augment z-scores on the left side of Interval to avoid downward trend 
 ### of kernal density function (assumes values go to 0)
 
-print("OK3")
-
 if (Augment == TRUE) { 
 
 	AUG = c()
 	n.AUG = round(Augment.Factor*length(zval[zval > d.x.min & zval < d.x.min+bw.aug]));n.AUG
-	if (n.AUG > 0) AUG = seq(d.x.min-bw.aug,d.x.min-.01,bw.aug/n.AUG)
+	if (n.AUG > 0) AUG = seq(d.x.min-bw.aug,d.x.min,bw.aug/n.AUG)
 
 	Z.INT.USE = c(zval,AUG)
 	#hist(Z.INT.USE[Z.INT.USE < 6],breaks=20)
@@ -1209,14 +1224,13 @@ if (Augment == TRUE) {
 
 #print(summary(Z.INT.USE))
 
-print("OK4")
-
-
 Z.Density = bkde(Z.INT.USE,bandwidth=bw,range=c(d.x.min-bw.aug,d.x.max)) 
 val.max = d.x.max
 D = data.frame(Z.Density$x,Z.Density$y)
 colnames(D) = c("ZX","ZY")
-#plot(D$ZX,D$ZY)
+#plot(D$ZX,D$ZY);abline(v=d.x.min)
+
+
 D = D[D$ZX > d.x.min & D$ZX < val.max,]
 dim(D)
 #plot(D$ZX,D$ZY)
@@ -1230,8 +1244,6 @@ sum(D$ZY*bar.width)
 #print("End Augment check")
 
 return(D)
-
-print("OK5")
 
 
 }  ### End of Get Densities 
@@ -1345,7 +1357,10 @@ bar.width
 Dens	= c()
 for(i in 1:n.bars) {
 	for (j in 1:length(ncz)) {
-		Dens = c(Dens,dnorm(Z.Density.X[i],ncz[j],zsds[j]))
+		Dens = c(Dens,
+		dnorm(Z.Density.X[i],ncz[j],zsds[j]) +
+		dnorm(-Z.Density.X[i],ncz[j],zsds[j])
+		)
 	}
 }
 summary(Dens)
@@ -1377,6 +1392,7 @@ d.hist.sel = mean(as.numeric(z.val.input > x.lim.min & z.val.input > Int.Beg & z
 d.hist.sel
 
 scale = d.hist.sel
+
 
 auto = nlminb(startval,zcurve.fitting,lower=lowlim,upper=highlim,
 	control=list(eval.max=1000,abs.tol = 1e-20))
@@ -1868,15 +1884,6 @@ return(res)
 
 
 
-#TESTING 
-#z.val.input = z.rep
-#z.val.input = z.rep[z.rep < 6]
-
-
-
-
-
-
 
 
 
@@ -1950,9 +1957,9 @@ names(z.extreme) = c("Ext.Neg","Ext.Pos")
 
 ### OLD FASHIONED Z-CURVE 
 
-print("Est.Method")
-print(Est.Method)
-print("Est.Method")
+#print("Est.Method")
+#print(Est.Method)
+#print("Est.Method")
 
 
 #if (Est.Method == "OF" | TEST4HETEROGENEITY > 0) {
