@@ -1037,12 +1037,6 @@ cbind(Z.Density.X,z.est)
 
 scale = d.hist.sel/d.dense.sel;scale
 
-print("SCALE")
-print("SCALE")
-print("SCALE")
-print("SCALE")
-print(scale)
-
 #par(new=TRUE)
 
 lines(Z.Density.X[which(Z.Density.X >= x.start & Z.Density.X < x.end)],
