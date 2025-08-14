@@ -1102,7 +1102,10 @@ n.bars = length(Z.Density.X);n.bars
 Dens	= c()
 for(i in 1:n.bars) {
 	for (j in 1:length(ncz)) {
-		Dens = c(Dens,dnorm(Z.Density.X[i],ncz[j],zsds[j]))
+		Dens = c(Dens,
+			dnorm(Z.Density.X[i],ncz[j],zsds[j]) +
+			dnorm(-Z.Density.X[i],ncz[j],zsds[j])
+		)
 	}
 }
 Dens = matrix(Dens,length(ncz),byrow=FALSE)
@@ -1433,7 +1436,10 @@ sds = para[(components*2+1):(3*components)]
 Dens	= c()
 for(i in 1:n.bars) {
 	for (j in 1:length(ncz)) {
-		Dens = c(Dens,dnorm(Z.Density.X[i],means[j],sds[j]))
+		Dens = c(Dens,
+			dnorm(Z.Density.X[i],means[j],sds[j]) +
+			dnorm(-Z.Density.X[i],means[j],sds[j]) 
+		)
 	}
 }
 Dens = matrix(Dens,length(ncz),byrow=FALSE)
