@@ -151,7 +151,7 @@ print("Parameter OK")
 ##################################################################
 ##################################################################
 
-Zing = function(z.val.input,cluster.id=c(),lp=c()) {
+Zing = function(z.val.input,df=c(),cluster.id=c(),lp=c()) {
 
 
 ##################################################################
@@ -1077,6 +1077,105 @@ if (Show.Significance) {
 ################################################
 ################################################
 
+Draw.Tcurve.All = function(z.val.input,w,ncz,zsds,cola="black",Lwidth=4,
+	Ltype=1,x.start=x.lim.min,x.end=x.lim.max) {
+
+if (1 == 2) {
+	x.start = x.lim.min
+	x.start = Int.Beg
+	x.end = x.lim.max
+	Lwidth = 2
+	cola = col.zcurve
+	w = c(0,0,1,0,0,0,0)
+	w = w.all
+
+    w = 1
+	ncz = 2.8
+	zsds = 1    
+
+	w.all = z.test$w.all
+	w = w.all
+
+
+	Ltype = 1
+}
+
+bar.width = .01
+Z.Density.X = seq(0,x.lim.max,bar.width)
+
+n.bars = length(Z.Density.X);n.bars
+
+Dens	= c()
+for(i in 1:n.bars) {
+	for (j in 1:length(ncz)) {
+		Dens = c(Dens,
+		dt(Z.Density.X[i],df,ncz[j]) +
+		dt(-Z.Density.X[i],df,ncz[j])
+		)
+	}
+}
+Dens = matrix(Dens,length(ncz),byrow=FALSE)
+sum.dens = rowSums(Dens)
+Dens = Dens/(sum.dens * bar.width)
+
+z.est = c()
+for (i in 1:n.bars) z.est[i] = sum(Dens[,i]*w)
+summary(z.est)
+sum(z.est*bar.width)
+
+d.hist.sel = mean(as.numeric(z.val.input > x.lim.min & z.val.input > Int.Beg & z.val.input < Int.End)) /
+	mean(as.numeric(z.val.input > x.lim.min & z.val.input < Int.End))
+d.hist.sel
+
+table(Z.Density.X >= Int.Beg)
+d.dense.sel = sum(z.est[Z.Density.X > x.lim.min & Z.Density.X >= Int.Beg]*bar.width)
+d.dense.sel
+
+cbind(Z.Density.X,z.est)
+
+scale = d.hist.sel/d.dense.sel;scale
+
+#par(new=TRUE)
+
+lines(Z.Density.X[which(Z.Density.X >= x.start & Z.Density.X < x.end)],
+	z.est[which(Z.Density.X >= x.start & Z.Density.X < x.end)]*scale,
+	lty=Ltype,col=cola,lwd=Lwidth,xlim=c(x.lim.min,x.lim.max),ylim=c(ymin,ymax))
+
+z.boundary = Int.Beg
+if (round(Int.Beg,2) == 1.96) {z.boundary = 2}
+
+Z.Density.X	
+segments(z.boundary,0,z.boundary,
+	z.est[which(round(Z.Density.X,2) == round(z.boundary,2))[1]]*scale,
+	col=cola,lwd=3)
+
+
+if (Show.Significance) {
+
+	if (length(sig.levels) == 0) sig.levels = alpha
+
+		cz.alpha = -qnorm(sig.levels/2);cz.alpha
+		if(two.sided == FALSE) cz.alpha = c(-cz.alpha,cz.alpha);cz.alpha
+
+		sig.lty = rep(2,length(cz.alpha));sig.lty
+
+		i = 1
+		for (i in 1:length(cz.alpha)) {
+			cz.alpha[i]
+			height = max(scale*z.est[which(round(Z.Density.X,1) == round(cz.alpha[i],1))]);height
+			segments(cz.alpha[i],0,cz.alpha[i],height,lty=sig.lty,lwd=2,col="firebrick3")
+		}
+
+} # End of Show.Significance
+
+
+} # End of Draw.Zcurve.All
+
+
+##########################################################
+##########################################################
+##########################################################
+
 
 
 Draw.Zcurve.Sig = function(z.draw,w,ncz,zsds,cola="black",Lwidth=3,Ltype=1,x.start=x.lim.min) {
@@ -1166,8 +1265,9 @@ if (Show.Significance) {
 
 Get.Densities = function(zval,bw="nrd0",d.x.min=0,d.x.max=6,Augment=TRUE) {
 
-#zval = z.val.input;d.x.min = Int.Beg; d.x.max = 6;bw=bw.est
-#zval = z.val.input[z.val.input > Int.Beg];d.x.max = 6;d.x.min = z.crit;bw = .2
+#bw = bw.est; zval = z.val.input[z.val.input > Int.Beg];d.x.max = 6;d.x.min = Int.Beg
+#hist(zval)
+#summary(zval)
 
 ### find the maximum z-score. This is only needed if the maximum z-score is below Int.End
 max.z = Int.End
@@ -1188,7 +1288,8 @@ Z.Density = bkde(z.val.input[z.val.input > round(Int.Beg,1)
 D = data.frame(Z.Density$x,Z.Density$y)
 dim(D)
 colnames(D) = c("ZX","ZY")
-D = D[D$ZX > Int.Beg + 6*bw.est & D$ZX < max(D$ZX) - 6*bw.est,]
+bw.reg = 1.5
+D = D[D$ZX > Int.Beg & D$ZX < Int.Beg + bw.reg,]
 dim(D)
 summary(D$ZX)
 
@@ -1196,7 +1297,7 @@ summary(D$ZX)
 
 d.reg = -lm(scale(D$ZY) ~ scale(D$ZX))$coefficients[2];d.reg
 
-if (Int.Beg > 1) Augment.Factor = d.reg
+if (Int.Beg > 1) Augment.Factor = 1 + d.reg;Augment.Factor
 
 } 
 
@@ -1210,8 +1311,10 @@ if (Augment == TRUE) {
 	n.AUG = round(Augment.Factor*length(zval[zval > d.x.min & zval < d.x.min+bw.aug]));n.AUG
 	if (n.AUG > 0) AUG = seq(d.x.min-bw.aug,d.x.min,bw.aug/n.AUG)
 
+	summary(zval)
 	Z.INT.USE = c(zval,AUG)
-	#hist(Z.INT.USE[Z.INT.USE < 6],breaks=20)
+	#hist(zval[zval & 1.9 & zval < 6],breaks=seq(1.9,6.1,.1),freq=FALSE)
+	#hist(Z.INT.USE[Z.INT.USE < 6],breaks=seq(1.9,6,.1),freq=FALSE)
 	#summary(AUG)
 
 } else {
@@ -1567,6 +1670,153 @@ return(c(res))
 #######################################################
 
 
+#######################################################
+### Begin Old Fashioned Zcurve (Est.Method = "OF" 
+#######################################################
+
+t.curve = function(t.val.input,df,cola = "springgreen2") {
+
+#t.val.input = sim.t
+
+tcurve.fitting = function(theta,RetEst=FALSE)    {
+
+### get the weights and rescale 
+weight = theta
+weight = weight/sum(weight)
+
+if (fixed.false.positives > 0) weight = c(fixed.false.positives,weight*(1-fixed.false.positives))
+sum(weight)
+
+### compute the new estimated density distribution
+t.est = c()
+for (i in 1:n.bars) t.est[i] = sum(Dens[,i]*weight)
+
+### compare to observed density distribution
+rmse = sqrt(mean((t.est-Z.Density.Y)^2))
+
+### return either fit if continue or estimates if finished
+value = rmse
+if(RetEst) value = t.est
+
+
+### showing the fitting of the function in a plot
+if(Plot.Fitting) {
+
+	rval = runif(1)
+	if (rval > .9) {
+
+	tit = ""
+	xL = ""
+	yL = ""
+	plot(Z.Density.X,Z.Density.Y*scale,type='l',
+		xlim=c(x.lim.min,x.lim.max),ylim=c(ymin,ymax),
+		main=tit,xlab=xL,ylab=yL,axes=FALSE)
+	lines(Z.Density.X,t.est*scale,lty=1,col="red1",
+		xlim=c(x.lim.min,x.lim.max),ylim=c(ymin,ymax),axes=FALSE)
+	#points(Z.Density.X,z.est,pch=20,col="red1",ylim=c(0,ymax),)
+
+	}
+
+} ### End of Plot Fitting
+
+### return value to optimization function
+return(value)
+
+} ### End of zcurve.fitting
+
+############################
+#### End of Fitting Function
+############################
+
+components = length(ncz)
+
+### get the densities for each interval and each non-centrality parameter
+
+t.int = t.val.input[t.val.input >= Int.Beg & t.val.input <= Int.End]
+
+densy = Get.Densities(t.int,bw=bw.est,d.x.min=Int.Beg,d.x.max=Int.End,Augment=Augment)
+
+Z.Density.X = densy[,1]
+Z.Density.Y = densy[,2]
+
+if (1 == 2) {
+	summary(Z.Density.X)
+	hist(t.int,freq=FALSE,breaks=seq(Int.Beg,Int.End,.1),ylim=c(ymin,ymax))
+	par(new=TRUE)
+	plot(Z.Density.X,Z.Density.Y,type="l",ylim=c(ymin,ymax))
+}
+
+n.bars.int.beg = length(Z.Density.X)
+n.bars = n.bars.int.beg;n.bars
+
+bar.width = Z.Density.X[2] - Z.Density.X[1]
+bar.width
+
+### Finish getting observed densities 
+
+Dens	= c()
+for(i in 1:n.bars) {
+	for (j in 1:length(ncz)) {
+		Dens = c(Dens,
+		dt(Z.Density.X[i],df,ncz[j]) +
+		dt(-Z.Density.X[i],df,ncz[j])
+		)
+	}
+}
+summary(Dens)
+Dens = matrix(Dens,length(ncz),byrow=FALSE)
+sum.dens = rowSums(Dens)
+Dens = Dens/(sum.dens * bar.width)
+n.bars
+dim(Dens)
+
+startval = rep(1/(components),components)
+startval[1] = 1
+startval = startval/sum(startval)
+startval
+
+lowlim = c(rep(0,components));lowlim
+highlim = c(rep(1,components));highlim
+
+if (fixed.false.positives > 0 & 0 %in% ncz) {
+  startval = rep(1/(components-1),components-1)
+  lowlim = c(rep(0,components-1),ncz,zsds);lowlim
+  highlim = c(rep(1,components-1),ncz,zsds);highlim
+}
+
+
+#TESTING = TRUE
+if (TESTING) Plot.Fitting = TRUE else Plot.Fitting = FALSE
+
+d.hist.sel = mean(as.numeric(t.val.input > x.lim.min & t.val.input > Int.Beg & z.val.input < Int.End)) /
+	mean(as.numeric(t.val.input > x.lim.min & t.val.input < Int.End))
+d.hist.sel
+
+scale = d.hist.sel
+
+auto = nlminb(startval,tcurve.fitting,lower=lowlim,upper=highlim,
+	control=list(eval.max=1000,abs.tol = 1e-20))
+
+fit = auto$objective;fit
+
+### get the estimated weights 
+WT = auto$par
+WT = WT/sum(WT)
+if (fixed.false.positives > 0) WT = c(fixed.false.positives,WT*(1-fixed.false.positives))
+sum(WT)
+
+res = c(WT,fit);res
+
+return(res)
+
+} ### End of old.fashioned.zcurve
+
+
+######################################################
+### End of t-curve 
+#######################################################
+
+
 #########################################################################
 ### This Function Computes Power from Weights and Non-Centrality Parameters
 #########################################################################
@@ -1707,15 +1957,119 @@ return(res)
 #####################################
 
 
-### Testing
-if (1 == 2) {
-w.inp = c(.5,.5)
-est.ncz = c(1.9,2.1)
-est.zsds = c(1.1,1.1)
+Compute.Power.DF = function(para,df,Int.Beg=z.crit,BOOT=FALSE) {
 
-para = para.est.EXT
+#para = para.est.DF
 
+t.crit = qt(1-alpha/2,df);t.crit
+
+t.ext.all = length(z.val.input[z.val.input > Int.End]) / 
+	length(z.val.input)
+t.ext.all
+
+t.ext.sig = length(z.val.input[z.val.input > Int.End]) / 
+	length(z.val.input[z.val.input > z.crit])
+t.ext.sig
+
+t.ext.inp = length(z.val.input[z.val.input > Int.End]) / 
+	length(z.val.input[z.val.input > Int.Beg])
+t.ext.inp
+
+w.inp = para[1:components]
+nct = para[(1+components):(2*components)]
+
+### get power values for the components (ncz)
+pow.dir = pt(t.crit,df,nct,lower.tail=FALSE);pow.dir 
+
+### get the opposite sign probability
+sign.error = pt(-t.crit,df,nct,lower.tail=TRUE);round(sign.error,3)
+
+pow = pow.dir + sign.error
+pow.ext = c(pow,1)
+
+pow.sel = pt(Int.Beg,df,nct,lower.tail=FALSE) + pt(-Int.Beg,df,nct);pow.sel
+pow.sel.ext = c(pow.sel,1)
+pow.sel
+
+w.inp.ext = c(w.inp*(1-t.ext.inp), t.ext.inp)          # estimated weights
+w.inp.ext
+
+w.all.ext   <- (w.inp.ext + w.inp.ext*(1-pow.sel.ext)
+   /(pow.sel.ext)) / sum(w.inp.ext + w.inp.ext*(1-pow.sel.ext)
+   /(pow.sel.ext))
+
+EDR = sum(w.all.ext*pow.ext);EDR
+
+w.sig.ext = w.all.ext * pow.ext
+w.sig.ext = w.sig.ext / EDR
+sum(w.sig.ext)
+
+pow.dir.ext = c(pow.dir,1)
+
+w.all = w.all.ext[1:components]
+w.sig = w.sig.ext[1:components]
+
+ERR = sum(w.sig.ext*pow.dir.ext);ERR
+
+if (ERR > 1) ERR = 1
+if (EDR > 1) EDR = 1
+
+if (ERR < alpha/2) ERR = alpha/2
+if (EDR < alpha) EDR = alpha 
+
+
+ERR.pos = NA
+ERR.neg = NA
+
+EDR.pos = NA
+EDR.neg = NA
+
+res.est = c(EDR,EDR.pos,EDR.neg,ERR,ERR.pos,ERR.neg)
+res.est
+res = c(res.est,w.all,w.sig)
+names(res) = c("EDR","EDR.pos","EDR.neg","ERR","ERR.pos","ERR.neg",
+paste0("w.all.",ncz[1:components]),paste0("w.sig",ncz[1:components]) )
+res
+
+
+if (int.loc > 0) {
+
+	bar.width = .01 # how fine should be the resolution
+	Z.X = seq(x.lim.min,Int.End,bar.width);summary(Z.X)	 # set of z-scores 
+
+	Z.W.D.Sum = unlist(lapply(Z.X,function(x) sum(dt(x,df,ncz)*w.all) ))
+	#plot(Z.X,Z.W.D.Sum)
+
+	loc.p = unlist(lapply(Z.X,function(x) 
+		sum(dt(x,df,ncz)*w.all*(pow.dir+sign.error)) /	
+			sum(dt(x,df,ncz)*w.all)	))
+
+	loc.p
+	int = seq(x.lim.min,x.lim.max,int.loc)
+	local.power = c()
+	i = 1
+	for (i in 1:(length(int)-1)) local.power = c(local.power,
+		sum(loc.p[Z.X > int[i] & Z.X < int[i+1]]*
+			Z.W.D.Sum[Z.X > int[i] & Z.X < int[i+1]])/
+		sum(Z.W.D.Sum[Z.X > int[i] & Z.X < int[i+1]])	 )		
+
+	local.power
+	names(local.power) = paste0("lp.",1:length(local.power))
+	res = c(res,local.power)
 }
+
+print(res)
+
+return(res)
+
+} # EOF Compute.Power.DF
+
+
+#####################################
+#####################################
+#####################################
+
+
 
 
 ###############################################################
@@ -1883,11 +2237,6 @@ return(res)
 
 
 
-
-
-
-
-
 #####################################
 ### BBB ZingStart #START #Begin of Main Program 
 ### BBB ZingStart #START #Begin of Main Program 
@@ -1904,6 +2253,9 @@ if (length(cluster.id > 0)) {
 }
 
 z.crit = qnorm(alpha/2,lower.tail=FALSE); z.crit
+crit = z.crit
+
+if(Est.Method == "DF") crit = qt(alpha/2,df,lower.tail=FALSE); crit
 
 components = length(ncz)
 
@@ -1927,7 +2279,7 @@ Z.INT = z.val.input[z.val.input >= Int.Beg & z.val.input <= Int.End]
 summary(Z.INT)
 
 n.z = length(z.val.input);n.z
-n.z.sig = length(z.val.input[abs(z.val.input) > z.crit])
+n.z.sig = length(z.val.input[abs(z.val.input) > crit])
 
 ODR = n.z.sig/n.z;ODR
 
@@ -1962,7 +2314,7 @@ names(z.extreme) = c("Ext.Neg","Ext.Pos")
 #print("Est.Method")
 
 
-#if (Est.Method == "OF" | TEST4HETEROGENEITY > 0) {
+if (Est.Method %in% c("OF","EM")) {
 
 para.est.OF = old.fashioned.zcurve(z.val.input)
 
@@ -1991,7 +2343,7 @@ round(loc.power,3)
 
 #print("Finish Old Fashioned")
 
-#} # EOF if Est.Method OF
+} # EOF if Est.Method OF
  
 #########################################
 ### EXTENDED Z-CURVE
@@ -2052,9 +2404,45 @@ if (Est.Method == "EXT") {
 
 #	print("Extended Version Completed")
 
-}
+} # EOF Extended Version 
 
-### end of Extended Version 
+
+##########################################################
+
+if (Est.Method == "DF") {
+
+if (df == "") { print("Remember to supply degrees of freedom")
+} else {
+
+para.est.DF = t.curve(z.val.input,df)
+
+fit = para.est.DF[components+1];fit
+
+para.est.DF = c(para.est.DF[1:components],ncz)
+
+#print("para.est.DF");print(para.est.DF)
+
+cp.res = Compute.Power.DF(para.est.DF,df,Int.Beg=Int.Beg)
+round(cp.res,3)
+
+EDR = cp.res[1];EDR
+ERR = cp.res[4];ERR
+
+w.all = cp.res[which(substring(names(cp.res),1,5) == "w.all")]
+w.all
+sum(w.all)
+
+w.sig = cp.res[which(substring(names(cp.res),1,5) == "w.sig")]
+round(w.sig,3)
+
+loc.power = cp.res[which(substring(names(cp.res),1,2) == "lp")]
+round(loc.power,3)
+
+#print("Finish Old Fashioned")
+
+}} # EOF t-curve
+ 
+
 
 
 ### if requested, run slower EM
@@ -2225,24 +2613,26 @@ if (Show.Histogram) {
 
 	if (Show.KD) Draw.KD(z.val.input,w.all,cola=col.kd)
 
-	if (Show.Zcurve.All & max(zsds) < 1.1) {
+
+	if (Show.Zcurve.All & Est.Method == "DF") {
+		Draw.Tcurve.All(z.val.input,w=w.all,ncz=ncz,zsds=zsds,cola=col.zcurve,
+			Ltype=3,Lwidth = 4,x.start=x.lim.min,x.end=x.lim.max)
+		Draw.Tcurve.All(z.val.input,w=w.all,ncz=ncz,zsds=zsds,cola=col.zcurve,
+			Ltype=1,Lwidth = 4,x.start=Int.Beg,x.end=Int.End)
+		}
+
+	if (Show.Zcurve.All & Est.Method != "DF" & max(zsds) < 1.05) {
 		Draw.Zcurve.All(z.val.input,w=w.all,ncz=ncz,zsds=zsds,cola=col.zcurve,
 			Ltype=3,Lwidth = 4,x.start=x.lim.min,x.end=x.lim.max)
 		Draw.Zcurve.All(z.val.input,w=w.all,ncz=ncz,zsds=zsds,cola=col.zcurve,
 			Ltype=1,Lwidth = 4,x.start=Int.Beg,x.end=Int.End)
 		}
-	if (Show.Zcurve.All & max(zsds) > 1.1) {
-		Draw.Zcurve.All.SDG1(w=w.inp,ncz=ncz,zsds=zsds,cola=col.zcurve,
-			Ltype = 3,Lwidth = 4,x.start=x.lim.min,x.end=x.lim.max)
-		Draw.Zcurve.All.SDG1(w=w.inp,ncz=ncz,zsds=zsds,cola=col.zcurve,
-			Ltype=1,Lwidth = 4,x.start=Int.Beg,x.end=Int.End)
-		}
 
-	if (Show.Zcurve.Sig) {
-		Draw.Zcurve.Sig(z.val.input,ncz=ncz,zsds=zsds,w.sig,cola=col.zcurve,
-			Ltype=3,x.start=x.lim.min,x.end=x.lim.max)
-		Draw.Zcurve.Sig(z.val.input,ncz=ncz,zsds=zsds,w.sig,cola=col.zcurve,
-			Ltype=1,x.start=Int.Beg,x.end=Int.End)
+	if (Show.Zcurve.All & Est.Method != "DF" & max(zsds) > 1.05) {
+		Draw.Zcurve.All.SDG1(w=w.all,ncz=ncz,zsds=zsds,cola=col.zcurve,
+			Ltype = 3,Lwidth = 4,x.start=x.lim.min,x.end=x.lim.max)
+		Draw.Zcurve.All.SDG1(w=w.all,ncz=ncz,zsds=zsds,cola=col.zcurve,
+			Ltype=1,Lwidth = 4,x.start=Int.Beg,x.end=Int.End)
 		}
 
 	if (length(loc.power > 0)) Write.Local.Power(loc.power)
@@ -2364,14 +2754,21 @@ if (boot.iter > 0 & Show.Histogram) {
 
 	if (Show.KD) Draw.KD(z.val.input,w.all,cola=col.kd)
 
-	if (Show.Zcurve.All & max(zsds) < 1.05) {
+	if (Show.Zcurve.All & Est.Method == "DF") {
+		Draw.Tcurve.All(z.val.input,w=w.all,ncz=ncz,zsds=zsds,cola=col.zcurve,
+			Ltype=3,Lwidth = 4,x.start=x.lim.min,x.end=x.lim.max)
+		Draw.Tcurve.All(z.val.input,w=w.all,ncz=ncz,zsds=zsds,cola=col.zcurve,
+			Ltype=1,Lwidth = 4,x.start=Int.Beg,x.end=Int.End)
+		}
+
+	if (Show.Zcurve.All & Est.Method != "DF" & max(zsds) < 1.05) {
 		Draw.Zcurve.All(z.val.input,w=w.all,ncz=ncz,zsds=zsds,cola=col.zcurve,
 			Ltype=3,Lwidth = 4,x.start=x.lim.min,x.end=x.lim.max)
 		Draw.Zcurve.All(z.val.input,w=w.all,ncz=ncz,zsds=zsds,cola=col.zcurve,
 			Ltype=1,Lwidth = 4,x.start=Int.Beg,x.end=Int.End)
 		}
 
-	if (Show.Zcurve.All & max(zsds) > 1.05) {
+	if (Show.Zcurve.All & Est.Method != "DF" & max(zsds) > 1.05) {
 		Draw.Zcurve.All.SDG1(w=w.all,ncz=ncz,zsds=zsds,cola=col.zcurve,
 			Ltype = 3,Lwidth = 4,x.start=x.lim.min,x.end=x.lim.max)
 		Draw.Zcurve.All.SDG1(w=w.all,ncz=ncz,zsds=zsds,cola=col.zcurve,
