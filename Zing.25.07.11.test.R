@@ -191,6 +191,7 @@ return(Dens)
 get.z.density = function(zx) {     
 
 n.bars = length(zx);n.bars
+bar.width = zx[2]-zx[1]
 
 Dens	= c()
 for(i in 1:n.bars) {
