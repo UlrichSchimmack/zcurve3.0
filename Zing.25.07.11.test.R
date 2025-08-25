@@ -995,7 +995,7 @@ if (Show.Significance) {
 		i = 1
 		for (i in 1:length(cz.alpha)) {
 			cz.alpha[i]
-			height = max(scale*z.est[which(round(D.X,1) == round(cz.alpha[i],1))]);height
+			height = max(scale*D.Y[which(round(D.X,1) == round(cz.alpha[i],1))]);height
 			segments(cz.alpha[i],0,cz.alpha[i],height,lty=sig.lty,lwd=2,col="firebrick3")
 		}
 
@@ -1235,8 +1235,6 @@ if(Plot.Fitting) {
 		main=tit,xlab=xL,ylab=yL,axes=FALSE)
 	lines(D.X,est*scale,lty=1,col="red1",
 		xlim=c(x.lim.min,x.lim.max),ylim=c(ymin,ymax),axes=FALSE)
-	#points(D.X,z.est,pch=20,col="red1",ylim=c(0,ymax),)
-
 	}
 
 } ### End of Plot Fitting
@@ -1787,6 +1785,7 @@ ext.inp
 components = length(ncp)
 
 w.inp = para[1:components];w.inp
+if (components == 1) w.all = w.inp
 if (Int.Beg == 0) w.all = w.inp;w.all
 est.cw.all = w.all
 est.ncp = para[(1+components):(2*components)];est.ncp
