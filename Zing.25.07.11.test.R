@@ -4,7 +4,7 @@
 ### SETTING PARAMETERS FOR Z-CURVE MODEL
 ########################################################################
 
-version <- "Version 25.08.11"   # Version label to appear on plots
+version <- "Version 25.08.25"   # Version label to appear on plots
 
 # Optional cleanup 
 # rm(list = ls())
@@ -191,7 +191,7 @@ return(Dens)
 get.z.density = function(zx) {     
 
 n.bars = length(zx);n.bars
-bar.width = zx[2]-zx[1]
+bar.width = zx[2] - zx[1]
 
 Dens	= c()
 for(i in 1:n.bars) {
@@ -1025,7 +1025,7 @@ if (components == 1) {
 	} else {
 		D.Y = dt(D.Y,df,ncp)
 	}
-	d.sim = cbind(zx,zy)
+	d.sim = cbind(D.X,D.Y)
 } else {
 	k.sim = 500000
 	sim.val = c()
@@ -1210,15 +1210,14 @@ if (fixed.false.positives > 0) weight = c(fixed.false.positives,weight*(1-fixed.
 sum(weight)
 
 ### compute the new estimated density distribution
-est = c()
-for (i in 1:n.bars) est[i] = sum(Dens[,i]*weight)
+E.D.Y = colSums(Dens*weight)
 
 ### compare to observed density distribution
-rmse = sqrt(mean((est-Z.Density.Y)^2))
+rmse = sqrt(mean((E.D.Y-O.D.Y)^2))
 
 ### return either fit if continue or estimates if finished
 value = rmse
-if(RetEst) value = est
+if(RetEst) value = E.D.Y
 
 
 ### showing the fitting of the function in a plot
@@ -1230,11 +1229,13 @@ if(Plot.Fitting) {
 	tit = ""
 	xL = ""
 	yL = ""
-	plot(D.X,Z.Density.Y*scale,type='l',
+	plot(D.X,O.D.Y*scale,type='l',
 		xlim=c(x.lim.min,x.lim.max),ylim=c(ymin,ymax),
 		main=tit,xlab=xL,ylab=yL,axes=FALSE)
-	lines(D.X,est*scale,lty=1,col="red1",
+	lines(D.X,E.D.Y*scale,lty=1,col="red1",
 		xlim=c(x.lim.min,x.lim.max),ylim=c(ymin,ymax),axes=FALSE)
+	#points(D.X,z.est,pch=20,col="red1",ylim=c(0,ymax),)
+
 	}
 
 } ### End of Plot Fitting
@@ -1252,19 +1253,16 @@ components = length(ncp)
 
 ### get the densities for each interval and each non-centrality parameter
 
-Z.INT = val.input[val.input >= Int.Beg & val.input <= Int.End]
-summary(Z.INT)
-#hist(Z.INT)
+INT = val.input[val.input >= Int.Beg & val.input <= Int.End]
 
-densy = Get.Densities(Z.INT,bw=bw.est,d.x.min=Int.Beg,d.x.max=Int.End,Augment=Augment)
+densy = Get.Densities(INT,bw=bw.est,d.x.min=Int.Beg,d.x.max=Int.End,Augment=Augment)
 
 D.X = densy[,1]
-Z.Density.Y = densy[,2]
+O.D.Y = densy[,2]
 
-#plot(D.X,Z.Density.Y,type="l")
+#plot(D.X,O.D.Y,type="l")
 
-n.bars.int.beg = length(D.X)
-n.bars = n.bars.int.beg;n.bars
+n.bars = length(D.X)
 
 bar.width = D.X[2] - D.X[1]
 bar.width
@@ -1275,10 +1273,17 @@ bar.width
 Dens	= c()
 for(i in 1:n.bars) {
 	for (j in 1:length(ncp)) {
-		Dens = c(Dens,
-		dnorm(D.X[i],ncp[j],zsds[j]) +
-		dnorm(-D.X[i],ncp[j],zsds[j])
-		)
+		if (CURVE.TYPE == "z") {
+			Dens = c(Dens,
+			dnorm(D.X[i],ncp[j],zsds[j]) +
+			dnorm(-D.X[i],ncp[j],zsds[j])
+			)
+		} else {
+			Dens = c(Dens,
+			dt(D.X[i],df,ncp[j]) +
+			dt(-D.X[i],df,ncp[j])
+			)
+		}
 	}
 }
 summary(Dens)
@@ -1302,14 +1307,14 @@ if (fixed.false.positives > 0 & 0 %in% ncp) {
 }
 
 
-#TESTING = TRUE
-if (TESTING) Plot.Fitting = TRUE else Plot.Fitting = FALSE
-
 d.hist.sel = mean(as.numeric(val.input > x.lim.min & val.input > Int.Beg & val.input < Int.End)) /
 	mean(as.numeric(val.input > x.lim.min & val.input < Int.End))
 d.hist.sel
 
 scale = d.hist.sel
+
+#TESTING = TRUE
+if (TESTING) Plot.Fitting = TRUE else Plot.Fitting = FALSE
 
 
 auto = nlminb(startval,curve.fitting,lower=lowlim,upper=highlim,
@@ -1346,6 +1351,7 @@ return(res)
 extended.curve = function(val.input,ncp=ncp,zsds=zsds) {
 
 #w.inp = 1;ncp = 4;zsds = 2;
+#weights = 1;means = 0;sds = 1;
 
 ### this is the actual fitting function
 extended.curve.fitting = function(para,RetEst=FALSE,Fixed.Null=FALSE)    {
@@ -1373,8 +1379,8 @@ for(i in 1:n.bars) {
 			sds
 			if (max(sds) > 0) {
 				Dens = c(Dens,
-				dnorm(D.X[i],means[j],sds[j]) +
-				dnorm(-D.X[i],means[j],sds[j])
+				dt(D.X[i],df,means[j]) +
+				dt(-D.X[i],df,means[j])
 				)
 			} else { 
 				Dens = c(Dens,
@@ -1387,21 +1393,19 @@ for(i in 1:n.bars) {
 }
 
 Dens = matrix(Dens,length(ncp),byrow=FALSE)
-dim(Dens)
 
 ### rescale the densities for the range of z-values to 1
-sum.dens = rowSums(Dens)
-Dens = Dens/(sum.dens * bar.width)
+row.sum.dens = rowSums(Dens)
+Dens = Dens/(row.sum.dens * bar.width)
+dim(Dens)
+summary(Dens)
+
 
 ### compute the new estimated density distribution
-est = c()
-for (i in 1:n.bars) est[i] = sum(Dens[,i]*weights)
-
-#cbind(Dens[1,],est)
-#cbind(est,D.Y)
+E.D.Y = colSums(Dens*weights)
 
 ### compare to observed density distribution
-rmse = sqrt(mean((est-D.Y)^2));rmse
+rmse = sqrt(mean((E.D.Y-O.D.Y)^2));rmse
 
 
 ### return either fit if continue or estimates if finished
@@ -1416,10 +1420,11 @@ if(Plot.Fitting) {
 	if (rval > .4) {
 
 	tit = ""
-	plot(D.X,D.Y,type='l',
+	xyy = cbind(D.X,O.D.Y,E.D.Y)
+	plot(xyy[,1],xyy[,2],type='l',
 		xlim=c(x.lim.min,x.lim.max),ylim=c(ymin,ymax),
 		main=tit,xlab='Z')
-	lines(D.X,est,lty=1,col="red1",
+	lines(xyy[,1],xyy[,3],lty=1,col="red1",
 		xlim=c(x.lim.min,x.lim.max),ylim=c(ymin,ymax))
 	}
 
@@ -1443,7 +1448,7 @@ components = length(ncp);components
 densy = Get.Densities(INT,bw=bw.est,d.x.min=Int.Beg,d.x.max=Int.End,Augment=Augment)
 
 D.X = densy[,1]
-D.Y = densy[,2]
+O.D.Y = densy[,2]
 
 #plot(D.X,D.Y)
 
@@ -1788,18 +1793,22 @@ w.inp = para[1:components];w.inp
 if (components == 1) w.all = w.inp
 if (Int.Beg == 0) w.all = w.inp;w.all
 est.cw.all = w.all
+
 est.ncp = para[(1+components):(2*components)];est.ncp
 est.zsds = para[(1+2*components):(3*components)];est.zsds
 est.zsds[est.zsds < 1] = 1  
 est.zncp.sd = sqrt(est.zsds^2 - 1);est.zncp.sd
 est.components = length(est.ncp)
 
+#curve(dnorm(x,est.ncp,est.zncp.sd),0,6)
+
 ###
 
 zx.bw = .01
-zx = seq(Int.Beg,Int.End,zx.bw)
+zx = seq(0,Int.End,zx.bw)
 pow.zx.dir = pnorm(abs(zx),1.96) 
 pow.zx.sign.error = + pnorm(-1.96,abs(zx))
+pow.zx = pow.zx.dir + pow.zx.sign.error
 
 i = 1
 est.wd.all = c()
@@ -1826,11 +1835,15 @@ sum(est.wd.all)
 
 est.wd.all.ext = c(est.wd.all*(1-ext.all),ext.all)
 pow.zx.dir.ext = c(pow.zx.dir,1)
-pow.zx.ext = c(pow.zx.dir+pow.zx.sign.error,1)
+
+#cbind(est.wd.all.ext,pow.zx.dir.ext)
+
+pow.zx.ext = c(pow.zx,1)
+EDR = sum(pow.zx.ext*est.wd.all.ext);EDR
+
 est.wd.sig.ext = est.wd.all.ext*pow.zx.ext
 est.wd.sig.ext = est.wd.sig.ext/sum(est.wd.sig.ext)
 
-EDR = sum(pow.zx.ext*est.wd.all.ext);EDR
 ERR = sum(pow.zx.dir.ext*est.wd.sig.ext)/sum(est.wd.sig.ext);ERR
 
 if (ERR > 1) ERR = 1
@@ -1901,9 +1914,9 @@ if (int.loc > 0 & BOOT==FALSE) {
 	local.power = c()
 	i = 1
 	for (i in 1:(length(int)-1)) local.power = c(local.power,
-		sum(loc.p[Z.X > int[i] & Z.X < int[i+1]]*
-			Z.W.D.Sum[Z.X > int[i] & Z.X < int[i+1]])/
-		sum(Z.W.D.Sum[Z.X > int[i] & Z.X < int[i+1]])	 )		
+		sum(loc.p[zx > int[i] & zx < int[i+1]]*
+			est.wd.all[zx > int[i] & zx < int[i+1]])/
+		sum(est.wd.all[zx > int[i] & zx < int[i+1]])	 )		
 	names(local.power) = paste0("lp.",1:length(local.power))
 	local.power
 	res = c(res,local.power)
@@ -2080,7 +2093,7 @@ if (Est.Method == "EXT") {
 		if (CURVE.TYPE == "z") {
 			cp.res = Compute.Power.Z(para.est.EXT,Int.Beg=Int.Beg)
 		} else {
-			cp.res = Compute.Power.Z(para.est.EXT,Int.Beg=Int.Beg)
+			cp.res = Compute.Power.T(para.est.EXT,Int.Beg=Int.Beg)
 		}
 	} else {
 		print("SD > 1")
