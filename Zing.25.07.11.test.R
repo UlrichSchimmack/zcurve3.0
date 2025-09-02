@@ -83,7 +83,7 @@ Show.Iterations <- TRUE      # Show iterations for slow procedures (e.g., EXT, T
 ### MODEL PARAMETERS
 
 alpha <- 0.05                        # Significance level
-z.crit <- qnorm(1 - alpha / 2)       # Corresponding two-sided critical z
+crit <- qnorm(1 - alpha / 2)       # Corresponding two-sided critical z
 
 two.sided <- TRUE                   # Assume two-sided z-values (use abs(z)); not yet compatible with signed z-values
 
@@ -102,7 +102,7 @@ components <- length(ncp)           # Number of components
 zsd <- 1                            # SD of standard normal z-distribution
 zsds = rep(zsd,components)          # one SD for each component
 
-just <- 0.6                         # Cutoff for "just significant" z-values (used in optional bias test)
+just <- 0.8                         # Cutoff for "just significant" z-values (used in optional bias test)
 
 ZSDS.FIXED <- FALSE                 # Fix SD values for EXT method 
 NCP.FIXED <- FALSE                  # Fix non-central parameter(NCP) means values for EXT method
@@ -293,30 +293,86 @@ return(return.res)
 
 test.bias = function(w.all) {
 
-sig.k = length(val.input[val.input > z.crit & val.input < Int.End])
+print("25.08.31")
+print("25.08.31")
+print("25.08.31")
+print("25.08.31")
+#Int.Beg = 2 + .4
+
+D.X = seq(x.lim.min,x.lim.max,.01)
+n.bars = length(D.X)
+bar.width = D.X[2]-D.X[1]
+
+components = length(ncp)
+means = ncp
+sds = zsds
+w = w.all
+
+print(means)
+print(sds)
+print(w)
+
+
+### get the densities for each interval and each non-centrality parameter
+Dens	= c()
+for(i in 1:n.bars) {
+	for (j in 1:components) {
+		if (CURVE.TYPE == "z") {
+			Dens = c(Dens,
+			dnorm(D.X[i],means[j],sds[j]) +
+			dnorm(-D.X[i],means[j],sds[j]) 
+			)
+		} else {
+			sds = sds - 1
+			sds[sds <= 0] = 0
+			sds
+			if (max(sds) > 0) {
+				Dens = c(Dens,
+				dt(D.X[i],df,means[j]) +
+				dt(-D.X[i],df,means[j])
+				)
+			} else { 
+				Dens = c(Dens,
+				dt(D.X[i],df,means[j]) +
+				dt(-D.X[i],df,means[j])
+				)
+			}
+		}
+	}
+}
+
+Dens = matrix(Dens,length(ncp),byrow=FALSE)
+
+### rescale the densities for the range of z-values to 1
+row.sum.dens = rowSums(Dens)
+Dens = Dens/(row.sum.dens * bar.width)
+dim(Dens)
+summary(Dens)
+
+### compute the new estimated density distribution
+E.D.Y = colSums(Dens*w)
+length(E.D.Y)
+
+sum(E.D.Y * bar.width)
+prob1 = sum(E.D.Y[D.X > crit & D.X < Int.Beg]*bar.width)
+prob1
+prob2 = sum(E.D.Y[D.X > crit & D.X < Int.End]*bar.width)
+prob2 
+prob = prob1 / prob2
+prob.adj = prob + .02 
+#prob.adj = prob
+prob
+
+sig.k = length(val.input[val.input > crit & val.input < Int.End])
 sig.k
 
-just.sig.k = length(val.input[val.input > z.crit & val.input < z.crit + just])
+just.sig.k = length(val.input[val.input > crit & val.input < Int.Beg])
 just.sig.k
 
-bar.width = .01 # how fine should be the resolution
-Z.X = seq(x.lim.min,Int.End,bar.width);summary(Z.X)	 # set of z-scores 
-
-w.all
-Z.W.D = unlist(lapply(Z.X,function(x) sum(dnorm(x,ncp,zsd)*w.all) ))
-DD = rbind(Z.X,Z.W.D)
-
-DD = DD[,DD[1,] > z.crit]
-#plot(DD[1,],DD[2,])
-
-DD[2,] = DD[2,]/(sum(DD[2,])*bar.width)
-
-prob = sum(DD[2,DD[1,] < z.crit + just])*bar.width;prob
-prob2 = sum(DD[2,DD[1,] > z.crit + just])*bar.width;prob2
-prob + prob2
+just.sig.k/sig.k
 
 ### binomial
-p.bias.binomial = 1 - pbinom(just.sig.k - 1, sig.k, prob = prob)
+p.bias.binomial = 1 - pbinom(just.sig.k - 1, sig.k, prob = prob.adj)
 #print(p.bias.binomial)
 
 ### chi2 approximation
@@ -326,8 +382,7 @@ p.bias.binomial = 1 - pbinom(just.sig.k - 1, sig.k, prob = prob)
 #p.bias.chi2 <- 1 - pchisq(chi2.val, df = 1)
 #print(p.bias.chi2)
 
-print(just)
-bias.res = c(just.sig.k/sig.k,prob,p.bias.binomial)
+bias.res = c(just.sig.k/sig.k,prob.adj,p.bias.binomial)
 print(bias.res)
 
 return(bias.res)
@@ -951,6 +1006,8 @@ Draw.Curve.All = function(w,cola="black",Lwidth=4,
 	Ltype=1,x.start=x.lim.min,x.end=x.lim.max) {
 
 
+#Draw.Histogram()
+
 bar.width = .01
 D.X = seq(x.lim.min,x.lim.max,bar.width)
 
@@ -968,6 +1025,22 @@ d.dense.sel
 d.hist.sel = mean(as.numeric(val.input > x.lim.min & val.input > Int.Beg & val.input < Int.End)) /
 	mean(as.numeric(val.input > x.lim.min & val.input < Int.End))
 d.hist.sel
+
+check = D.Y[D.X > crit & D.X < Int.Beg]
+length(check)
+EPJS = sum(D.Y[D.X > crit & D.X < Int.Beg])/sum(D.Y[D.X > crit])
+EPJS
+
+OFJS = sum(as.numeric(val.input > crit & val.input < Int.Beg))
+OFJS
+
+OFS = sum(as.numeric(val.input > crit & val.input < Int.End))
+OFS
+
+OPJS = OFJS/OFS
+OPJS
+
+
 
 scale = d.hist.sel/d.dense.sel;scale
 
@@ -987,22 +1060,21 @@ if (Show.Significance) {
 
 	if (length(sig.levels) == 0) sig.levels = alpha
 
-		cz.alpha = -qnorm(sig.levels/2);cz.alpha
-		if(two.sided == FALSE) cz.alpha = c(-cz.alpha,cz.alpha);cz.alpha
+		sig.level = crit
+		if(two.sided == FALSE) sig.level = c(-sig.level,sig.level)
 
-		sig.lty = rep(2,length(cz.alpha));sig.lty
+		sig.lty = rep(2,length(sig.level));sig.lty
 
 		i = 1
-		for (i in 1:length(cz.alpha)) {
-			cz.alpha[i]
-			height = max(scale*D.Y[which(round(D.X,1) == round(cz.alpha[i],1))]);height
-			segments(cz.alpha[i],0,cz.alpha[i],height,lty=sig.lty,lwd=2,col="firebrick3")
+		for (i in 1:length(sig.level)) {
+			height = max(scale*D.Y[which(round(D.X,1) == round(sig.level[i],1))]);height
+			segments(sig.level[i],0,sig.level[i],height,lty=sig.lty,lwd=2,col="firebrick3")
 		}
 
 } # End of Show.Significance
 
 
-} # End of Draw.Zcurve.All
+} # End of Draw.Curve.All
 
 
 ###################################################
@@ -2034,7 +2106,7 @@ fit = para.est.OF[components+1];fit
 para.est.OF = c(para.est.OF[1:components],ncp,zsds)
 
 #print("para.est.OF")
-#print(para.est.OF)
+#print(round(para.est.OF,2))
 
 if (CURVE.TYPE == "z") {
   cp.res = Compute.Power.Z(para.est.OF,Int.Beg=Int.Beg)
