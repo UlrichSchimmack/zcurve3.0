@@ -2507,17 +2507,10 @@ if (boot.iter > 0 & Show.Histogram) {
 
 	if (Show.KD) Draw.KD(val.input,w.all,cola=col.kd)
 
-	if (Show.Zcurve.All & Est.Method == "DF") {
-		Draw.Tcurve.All(val.input,w=w.all,ncp=ncp,zsds=zsds,cola=col.curve,
-			Ltype=3,Lwidth = 4,x.start=x.lim.min,x.end=x.lim.max)
-		Draw.Tcurve.All(val.input,w=w.all,ncp=ncp,zsds=zsds,cola=col.curve,
-			Ltype=1,Lwidth = 4,x.start=Int.Beg,x.end=Int.End)
-		}
-
 	if (Show.Curve.All & Est.Method != "DF" & max(zsds) < 1.05) {
-		Draw.Curve.All(val.input,w=w.all,ncp=ncp,zsds=zsds,cola=col.curve,
+		Draw.Curve.All(w=w.all,ncp=ncp,zsds=zsds,cola=col.curve,
 			Ltype=3,Lwidth = 4,x.start=x.lim.min,x.end=x.lim.max)
-		Draw.Curve.All(val.input,w=w.all,ncp=ncp,zsds=zsds,cola=col.curve,
+		Draw.Curve.All(w=w.all,ncp=ncp,zsds=zsds,cola=col.curve,
 			Ltype=1,Lwidth = 4,x.start=Int.Beg,x.end=Int.End)
 		}
 
