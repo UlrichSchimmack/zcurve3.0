@@ -2030,7 +2030,7 @@ if (substring(Est.Method,1,3) == "CLU") {
 	   tab = table(cluster.id);tab
 	   cluster.k = length(tab);cluster.k
 	} else{
-       print("Cluster IDs are missing!"
+       print("Cluster IDs are missing!")
 	}
 } 
 
