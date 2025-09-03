@@ -2024,13 +2024,15 @@ return(res)
 
 
 
-
-
-if (length(cluster.id > 0)) {
-    z.clu.input = zcurve_data(paste("z = ", val.input), id = cluster.id)
-    tab = table(cluster.id);tab
-    cluster.k = length(tab);cluster.k
-}
+if (substring(Est.Method,1,3) == "CLU") {
+	if (length(cluster.id > 0)) {
+	   z.clu.input = zcurve_data(paste("z = ", val.input), id = cluster.id)
+	   tab = table(cluster.id);tab
+	   cluster.k = length(tab);cluster.k
+	} else{
+       print("Cluster IDs are missing!"
+	}
+} 
 
 if (CURVE.TYPE == "z") { 
   crit = qnorm(alpha/2,lower.tail=FALSE)
