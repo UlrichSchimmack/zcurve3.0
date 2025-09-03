@@ -462,7 +462,7 @@ EXT.boot = function()	{
 
 			if (mean(zsds) > 1.1) { cp.res = 
 				Compute.Power.SDG1(cp.input,BOOT=TRUE)
-			} else { cp.res = Compute.Power(cp.input) }
+			} else { cp.res = Compute.Power.Z(cp.input) }
 
 			cp.res
 
@@ -1829,7 +1829,7 @@ print(res)
 
 return(res)
 
-} # EOF Compute.Power.DF
+} # EOF Compute.Power.T
 
 
 #####################################
@@ -2223,7 +2223,7 @@ if(Est.Method == "EM" & boot.iter == 0) {
 	w.inp =	 summary(res.em, type="parameters")$coefficients[(components+1):(2*components)]
 	round(w.inp,3)
 
-	cp.em = Compute.Power(Int.Beg = Int.Beg,c(w.inp,ncp,zsds))
+	cp.em = Compute.Power.Z(Int.Beg = Int.Beg,c(w.inp,ncp,zsds))
 	round(cp.em,3)
 
 	w.all = cp.em[which(substring(names(cp.em),1,5) == "w.all")]
@@ -2266,7 +2266,7 @@ if(Est.Method == "density" & boot.iter == 0) {
 	#w.all = w.all/sum(w.all)
 	#round(w.all,3)
 
-	cp.res = Compute.Power(Int.Beg = Int.Beg,c(w.inp,ncp,zsds))
+	cp.res = Compute.Power.Z(Int.Beg = Int.Beg,c(w.inp,ncp,zsds))
 	round(cp.res,3)
 
 	w.all = cp.res[which(substring(names(cp.res),1,5) == "w.all")]
@@ -2308,6 +2308,7 @@ if (Est.Method %in% c("CLU", "CLU-W","CLU-B") & boot.iter >= 0) {
 	w.inp =	 summary(z.clu, type="parameters")$coefficients[(components+1):(2*components)]
 	round(w.inp,3)
 
+	print("Computing Power for Cluster Method")
 	cp.res = Compute.Power.Z(Int.Beg = Int.Beg,c(w.inp,ncp,zsds))
 	round(cp.res,3)
 
