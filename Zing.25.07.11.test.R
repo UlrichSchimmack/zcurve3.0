@@ -2308,7 +2308,7 @@ if (Est.Method %in% c("CLU", "CLU-W","CLU-B") & boot.iter >= 0) {
 	w.inp =	 summary(z.clu, type="parameters")$coefficients[(components+1):(2*components)]
 	round(w.inp,3)
 
-	cp.res = Compute.Power(Int.Beg = Int.Beg,c(w.inp,ncp,zsds))
+	cp.res = Compute.Power.Z(Int.Beg = Int.Beg,c(w.inp,ncp,zsds))
 	round(cp.res,3)
 
 	w.all = cp.res[which(substring(names(cp.res),1,5) == "w.all")]
