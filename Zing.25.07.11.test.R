@@ -2026,7 +2026,9 @@ return(res)
 
 if (substring(Est.Method,1,3) == "CLU") {
 	if (length(cluster.id > 0)) {
-	   z.clu.input = zcurve_data(paste("z = ", val.input), id = cluster.id)
+	   clu.inp = data.frame(val.input,cluster.id)
+	   clu.inp = clu.inp[complete.cases(clu.inp),]
+	   z.clu.input = zcurve_data(paste("z = ", clu.inp[,1]), id = clu.inp[,2])
 	   tab = table(cluster.id);tab
 	   cluster.k = length(tab);cluster.k
 	} else{
