@@ -676,7 +676,7 @@ hist(c(0),main="",ylim=c(ymin,ymax),ylab="",xlab="",xlim=c(x.lim.min,x.lim.max),
 	min.z = min(val.input)
 	max.z = max(val.input)
 	n.z = length(val.input)
-	n.z.sig = length(val.input[val.input > z.crit])
+	n.z.sig = length(val.input[val.input > crit])
 	n.not.shown = length(val.input[val.input > x.lim.max])
 
 	### set location parameters for writing text
@@ -1597,7 +1597,7 @@ return(c(res))
 ### This Function Computes Power from Weights and Non-Centrality Parameters
 #########################################################################
 
-Compute.Power.Z = function(para,Int.Beg=z.crit,BOOT=FALSE) {
+Compute.Power.Z = function(para,Int.Beg=crit,BOOT=FALSE) {
 
 #para = para.est.OF
 #para = res.1$w.all
@@ -1607,7 +1607,7 @@ ext.all = length(val.input[val.input > Int.End]) /
 ext.all
 
 ext.sig = length(val.input[val.input > Int.End]) / 
-	length(val.input[val.input > z.crit])
+	length(val.input[val.input > crit])
 ext.sig
 
 ext.inp = length(val.input[val.input > Int.End]) / 
@@ -1626,10 +1626,10 @@ ncp = para[(1+components):(2*components)]
 zsds = para[(1+2*components):(3*components)]
 
 ### get power values for the components (ncp)
-pow.dir = pnorm(abs(ncp),z.crit);pow.dir 
+pow.dir = pnorm(abs(ncp),crit);pow.dir 
 
 ### get the opposite sign probability
-sign.error = 1-pnorm(ncp,-z.crit);round(sign.error,3)
+sign.error = 1-pnorm(ncp,-crit);round(sign.error,3)
 
 pow = pow.dir + sign.error
 pow.ext = c(pow,1)
@@ -1735,7 +1735,7 @@ t.ext.all = length(val.input[val.input > Int.End]) /
 t.ext.all
 
 t.ext.sig = length(val.input[val.input > Int.End]) / 
-	length(val.input[val.input > z.crit])
+	length(val.input[val.input > crit])
 t.ext.sig
 
 t.ext.inp = length(val.input[val.input > Int.End]) / 
@@ -1848,7 +1848,7 @@ ext.all = length(val.input[val.input > Int.End]) /
 ext.all
 
 ext.sig = length(val.input[val.input > Int.End]) / 
-	length(val.input[val.input > z.crit])
+	length(val.input[val.input > crit])
 ext.sig
 
 ext.inp = length(val.input[val.input > Int.End]) / 
@@ -2510,9 +2510,9 @@ if (boot.iter > 0 & Show.Histogram) {
 	if (Show.KD) Draw.KD(val.input,w.all,cola=col.kd)
 
 	if (Show.Curve.All & Est.Method != "DF" & max(zsds) < 1.05) {
-		Draw.Curve.All(w=w.all,ncp=ncp,zsds=zsds,cola=col.curve,
+		Draw.Curve.All(w=w.all,cola=col.curve,
 			Ltype=3,Lwidth = 4,x.start=x.lim.min,x.end=x.lim.max)
-		Draw.Curve.All(w=w.all,ncp=ncp,zsds=zsds,cola=col.curve,
+		Draw.Curve.All(w=w.all,cola=col.curve,
 			Ltype=1,Lwidth = 4,x.start=Int.Beg,x.end=Int.End)
 		}
 
