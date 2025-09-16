@@ -709,7 +709,7 @@ hist(c(0),main="",ylim=c(ymin,ymax),ylab="",xlab="",xlim=c(x.lim.min,x.lim.max),
 		" tests "),pos=2,cex = letter.size)
 	i = i + 1.5
 
-	if (Est.Method %in% c("CLU-B","CLU-W") ) {
+	if (substring(Est.Method,1,3) == "CLU") {
 		text(results.x+0.1,y.text-y.line*i,paste0(toString(format(cluster.k,big.mark=",")),
 			" articles "),pos=2,cex = letter.size)
 		i = i + 1.5
@@ -2321,9 +2321,11 @@ if (Est.Method %in% c("CLU", "CLU-W","CLU-B") & boot.iter >= 0) {
 	loc.power = cp.res[which(substring(names(cp.res),1,2) == "lp")]
 	round(loc.power,3)
 
-	EDR = z.clu$coefficients[2];EDR
-	ERR = z.clu$coefficients[1];ERR
+str(summary(z.clu))
 
+	EDR = summary(z.clu)$coefficients[2,];EDR
+	ERR = summary(z.clu)$coefficients[1,];ERR
+	FDR = round((1/EDR - 1)*(alpha/(1-alpha)),2)[c(1,3,2)];FDR
 
 } # EOF Cluster Method 
 
@@ -2478,20 +2480,14 @@ if (boot.iter > 0 & Est.Method == "EXT") {
 }
 
 
-if (boot.iter > 0 & Est.Method %in% c("CLU-W","CLU-B") ) {
+if (boot.iter > 0 & substring(Est.Method,1,3) == "CLU") {
 
 
-	res.ci = summary(z.clu)$coefficients[1:2,]
-	res.ci = rbind(c(ODR,ODR.low,ODR.high),res.ci)
-	rownames(res.ci)[1] = "ODR"
-	round(res.ci,3)
-	dim(res.ci)
+	results = rbind(c(ODR,ODR.low,ODR.high),EDR,ERR,FDR)
+	rownames(results) = c("ODR","EDR","ERR","FDR")
+	round(results,3)
 
-	res.ci = rbind(res.ci,(1/res.ci[2,] - 1)*(alpha/(1-alpha)) )
-	rownames(res.ci)[4] = "FDR"
-
-	
-	res.text = rbind(res.ci,c(p.bias))
+	res.text = rbind(results,c(p.bias))
 	res.text = round(res.text,3)
 
 	rownames(res.text)[5] = "BIAS"
