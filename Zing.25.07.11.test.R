@@ -2286,6 +2286,40 @@ if(Est.Method == "density" & boot.iter == 0) {
 } #EOF density
 
 
+### ADD RESULTS
+
+FDR = round((1/EDR - 1)*(alpha/(1-alpha)),2);
+names(FDR) = "FDR"
+FDR
+
+res = c(ODR,ERR,EDR,FDR,fit)
+names(res) = c("ODR","ERR","EDR","FDR","FIT")
+
+#print("Check res")
+#print(res)
+
+#print("Finished Computations")
+#res is needed for text in plot
+
+p.bias = c(NA,NA,NA)
+if(TEST4BIAS) { 
+	p.bias = test.bias(w.all) 
+}
+names(p.bias) = c("OBS.JS","EXP.JS","EJS.p")
+#print("bias test")
+#print(p.bias)
+
+res.text = c(res[1:4],p.bias[3])
+
+res.zsds = zsds
+
+
+#print("RESULTS")
+#print(res.text)
+
+### END OF ADD RESULTS
+
+
 ####################################################################
 
 if (Est.Method %in% c("CLU", "CLU-W","CLU-B") & boot.iter >= 0) {
@@ -2321,50 +2355,20 @@ if (Est.Method %in% c("CLU", "CLU-W","CLU-B") & boot.iter >= 0) {
 	loc.power = cp.res[which(substring(names(cp.res),1,2) == "lp")]
 	round(loc.power,3)
 
-str(summary(z.clu))
+	#str(summary(z.clu))
 
 	EDR = summary(z.clu)$coefficients[2,];EDR
 	ERR = summary(z.clu)$coefficients[1,];ERR
 	FDR = round((1/EDR - 1)*(alpha/(1-alpha)),2)[c(1,3,2)];FDR
+
+	#print("FDR!!!!!!!!!!!!!!!!!!!!!!!!!")
+	#print(FDR)
 
 } # EOF Cluster Method 
 
 
 ########################################################## 
 
-
-### ADD RESULTS
-
-FDR = round((1/EDR - 1)*(alpha/(1-alpha)),2);
-names(FDR) = "FDR"
-FDR
-
-res = c(ODR,ERR,EDR,FDR,fit)
-names(res) = c("ODR","ERR","EDR","FDR","FIT")
-
-#print("Check res")
-#print(res)
-
-#print("Finished Computations")
-#res is needed for text in plot
-
-p.bias = c(NA,NA,NA)
-if(TEST4BIAS) { 
-	p.bias = test.bias(w.all) 
-}
-names(p.bias) = c("OBS.JS","EXP.JS","EJS.p")
-#print("bias test")
-#print(p.bias)
-
-res.text = c(res[1:4],p.bias[3])
-
-res.zsds = zsds
-
-
-#print("RESULTS")
-#print(res.text)
-
-### END OF ADD RESULTS
 
 ##########################################
 ### This Code is Used to Create Graphic
@@ -2491,7 +2495,11 @@ if (boot.iter > 0 & substring(Est.Method,1,3) == "CLU") {
 	res.text = round(res.text,3)
 
 	rownames(res.text)[5] = "BIAS"
-	round(res.text,3)
+
+
+	#print(round(res.text,3))
+
+	
 	
 	res = res.text
 	res
