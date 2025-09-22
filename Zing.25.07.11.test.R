@@ -598,8 +598,17 @@ return(res.ci)
 Write.Local.Power = function(loc.power) {
 	names(loc.power) = paste0("LP",seq(1,length(loc.power)))
 	int = seq(x.lim.min,x.lim.max-int.loc,int.loc)+int.loc/2
-	for (i in 1:length(int)) text(int[i],ymin/10,paste0(format(round(loc.power[i]*100),nsmall=0),"%"),srt=90,pos=2
+
+	par(xpd = NA)
+	usr = par("usr")
+	new.y = usr[3] -.05
+
+	for (i in 1:length(int)) text(int[i],new.y,
+		paste0(format(round(loc.power[i]*100),nsmall=0),"%"),srt=90,pos=4
                                ,cex=letter.size)
+
+	par(xpd = FALSE)
+
 }
 
 
@@ -612,23 +621,15 @@ Draw.Histogram = function(w,cola="blue3",
 
 	#w = w.all;cola = "blue3"; results = res.text
 
-	#Testing: val.input = z.rep
-	#cola="blue3"
+	int.start = Int.Beg
+	if (round(Int.Beg,2) == 1.96) int.start = 2
+
 	z.hist = val.input[val.input > x.lim.min & val.input < x.lim.max]
 	if (round(Int.Beg,2) == 1.96) {
 		z.hist = val.input[val.input > x.lim.min & val.input < x.lim.max -.04] + .04
 	}
 	table(z.hist > 1.96)
 
-	scale = 
-	length(val.input[val.input > x.lim.min & val.input < x.lim.max]) /
-	length(val.input[val.input > x.lim.min & val.input < x.lim.max])
-	scale
-
-	Int.Beg
-	ymin/scale
-	ymax/scale
-	
 	n.breaks = seq(x.lim.min,x.lim.max,hist.bar.width);n.breaks
 
 	par(cex.axis = 1)
@@ -637,28 +638,61 @@ Draw.Histogram = function(w,cola="blue3",
 	par(font.axis = 1) #"Microsoft Himalaya")
 	par(font.lab = 1) # Microsoft Himalaya")
 
+	col1 = adjustcolor(cola, alpha.f = 0.2)
+	col2 = adjustcolor(cola, alpha.f = 0.3)
+
+	#par(mgp = c(4, 1, 2))
+
+	ymax = ymax - .5
+
+	#graphics.off()
 	###z.hist = val.input
 	### draw a histogram of observed z-scores
-	hist(z.hist[z.hist < x.lim.max],breaks=n.breaks,freq=FALSE,
-		col=adjustcolor(cola, alpha.f = 0.2),border="white",
+
+	#plot(0, 0, type="n", xlim = c(x.lim.min, x.lim.max), ylim = c(ymin, ymax),
+   	#  xlab = "absolute z-value", ylab = "Density")
+	#par(new=TRUE)
+
+	hist(z.hist,breaks=n.breaks,freq=FALSE,
+		col=col1,border="white",
 		xlim=c(x.lim.min,x.lim.max),ylim=c(ymin,ymax),
-		ylab="Density",xlab="absolute z-value",main=Title,lwd=1)
+		ylab="Density",xlab="absolute z-value",axes=FALSE,main=Title,lwd=1)
 
 	par(new=TRUE)
 
+	length(z.hist[z.hist > int.start]) 
+    length(z.hist)
 
-	scale = 
-	length(val.input[val.input > Int.Beg & val.input < x.lim.max]) /
-	length(val.input[val.input > x.lim.min & val.input < x.lim.max])
-	scale
+	bars = table(cut(z.hist,n.breaks))
+	bars = bars/length(z.hist)/hist.bar.width
+	sum(bars * hist.bar.width)
+	names(bars) = as.character(n.breaks[2:length(n.breaks)])
+	bars
 
-	#n.breaks = seq(round(Int.Beg,1),x.lim.max,hist.bar.width);n.breaks
+	bars1 = bars
+	bars2 = bars[(which(names(bars) == as.character(int.start))+1):length(bars)]
+	bars2
+ 	sum(bars2)
+
+	
+	#barplot(bars2,beside=TRUE,col=col2)
+
+	scale = sum(bars1)/sum(bars2)
+
+	ymax.scale = (ymax+ymin)*scale
 
 	hist(z.hist[z.hist > round(Int.Beg,1) & z.hist < Int.End],
 		breaks=n.breaks,freq=FALSE,
-		col=adjustcolor(cola, alpha.f = 0.3),border="white",
-		xlim=c(x.lim.min,x.lim.max),ylim=c(ymin/scale,ymax/scale),
+		col=col2,border="white",
+		xlim=c(x.lim.min,x.lim.max),ylim=c(ymin,ymax.scale),
 		ylab=,xlab="absolute z-value",main=Title,lwd=1,axes=FALSE)
+
+?axis
+
+	axis(2, mgp = c(ymax, 0.75, 0))  # redraw y-axis
+
+	axis(1, line = 1)  # draw x-axis lower
+
 
 
 ######################################### 
