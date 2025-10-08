@@ -784,12 +784,12 @@ hist(c(0),main="",ylim=c(ymin,ymax),ylab="",xlab="",xlim=c(x.lim.min,x.lim.max),
 	ODR = results[1,1]
 	ODR.low = results[1,2]
 	ODR.high = results[1,3]
-	ERR = results[2,1]
-	ERR.low = results[2,2]
-	ERR.high = results[2,3]
-	EDR = results[3.1]
-	EDR.low = results[3,2]
-	EDR.high = results[3,3]
+	EDR = results[2,1]
+	EDR.low = results[2,2]
+	EDR.high = results[2,3]
+	ERR = results[3.1]
+	ERR.low = results[3,2]
+	ERR.high = results[3,3]
 	FDR = results[4.1]
 	FDR.low = results[4,2]
 	FDR.high = results[4,3]
@@ -859,8 +859,8 @@ hist(c(0),main="",ylim=c(ymin,ymax),ylab="",xlab="",xlim=c(x.lim.min,x.lim.max),
 	results = round(results*100);results
 
 	ODR = results[1];ODR
-	ERR = results[2];ERR
-	EDR = results[3];EDR
+	EDR = results[2];ERR
+	ERR = results[3];EDR
 	FDR = results[4];FDR
 
 	if (is.na(p.bias)) TEST4BIAS = FALSE
