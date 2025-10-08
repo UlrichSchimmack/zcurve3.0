@@ -599,15 +599,28 @@ Write.Local.Power = function(loc.power) {
 	names(loc.power) = paste0("LP",seq(1,length(loc.power)))
 	int = seq(x.lim.min,x.lim.max-int.loc,int.loc)+int.loc/2
 
-	par(xpd = NA)
-	usr = par("usr")
-	new.y = usr[3] -.05
+	old_mar <- par("mar")
+	par(mar = old_mar + c(1, 0, 0, 0))  # increase bottom margin by 2 lines
 
-	for (i in 1:length(int)) text(int[i],new.y,
-		paste0(format(round(loc.power[i]*100),nsmall=0),"%"),srt=90,pos=4
-                               ,cex=letter.size)
+	new.y = 0
 
-	par(xpd = FALSE)
+#for (i in 1:length(int)) text(int[i],new.y,
+#	paste0(format(round(loc.power[i]*100),nsmall=0),"%"),srt=90,pos=1
+#                              ,cex=letter.size)
+#par(xpd = FALSE)
+
+lab = c()
+for (i in 1:length(int)) lab[i] = paste0("   ",format(round(loc.power[i]*100),nsmall=0),"%")
+lab
+
+x_pos  <- seq(x.lim.min, x.lim.max, length.out = length(lab))
+x_pos
+
+#axis(1)
+
+mtext(lab, side=1, line=.8, at=x_pos, cex=1.0, las=2)
+
+
 
 }
 
@@ -661,7 +674,7 @@ Draw.Histogram = function(w,cola="blue3",
 
 	axis(2, ylim = c(0,ymax))
 
-	axis(1, line = 1.5)  # draw x-axis lower
+	axis(1, line = 2)  # draw x-axis lower
 
 
 	par(new=TRUE)
