@@ -61,7 +61,7 @@ y.line.factor <- 3           # Controls spacing of plot text
 x.lim.min <- 0               # X-axis lower bound
 x.lim.max <- 6               # X-axis upper bound
 ymax <- 0.6                  # Y-axis upper bound
-ymin <- -ymax / 15           # Y-axis lower bound (for label space)
+ymin <- 0                    # OUTDATED Y-axis lower bound (for label space)
 
 Show.Histogram <- TRUE       # Toggle histogram in plot
 Show.Text <- TRUE            # Toggle model results in plot
@@ -643,8 +643,6 @@ Draw.Histogram = function(w,cola="blue3",
 
 	#par(mgp = c(4, 1, 2))
 
-	ymax = ymax - .5
-
 	#graphics.off()
 	###z.hist = val.input
 	### draw a histogram of observed z-scores
@@ -653,15 +651,20 @@ Draw.Histogram = function(w,cola="blue3",
    	#  xlab = "absolute z-value", ylab = "Density")
 	#par(new=TRUE)
 
+	#print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! ymax")
+	#print(ymax)
+
 	hist(z.hist,breaks=n.breaks,freq=FALSE,
 		col=col1,border="white",
 		xlim=c(x.lim.min,x.lim.max),ylim=c(ymin,ymax),
-		ylab="Density",xlab="absolute z-value",axes=FALSE,main=Title,lwd=1)
+		ylab="Density",xlab="",axes=FALSE,main=Title,lwd=1)
+
+	axis(2, ylim = c(0,ymax))
+
+	axis(1, line = 1.5)  # draw x-axis lower
+
 
 	par(new=TRUE)
-
-	length(z.hist[z.hist > int.start]) 
-    length(z.hist)
 
 	bars = table(cut(z.hist,n.breaks))
 	bars = bars/length(z.hist)/hist.bar.width
@@ -685,13 +688,7 @@ Draw.Histogram = function(w,cola="blue3",
 		breaks=n.breaks,freq=FALSE,
 		col=col2,border="white",
 		xlim=c(x.lim.min,x.lim.max),ylim=c(ymin,ymax.scale),
-		ylab=,xlab="absolute z-value",main=Title,lwd=1,axes=FALSE)
-
-?axis
-
-	axis(2, mgp = c(ymax, 0.75, 0))  # redraw y-axis
-
-	axis(1, line = 1)  # draw x-axis lower
+		ylab=,xlab="",main=Title,lwd=1,axes=FALSE)
 
 
 
