@@ -570,7 +570,7 @@ fit.val
 
 w.all = cbind(w.all,w.all.low,w.all.high)
 
-res.ci = rbind(ERR,EDR,FDR,fit.val,w.all)
+res.ci = rbind(EDR,ERR,FDR,fit.val,w.all)
 print(round(res.ci,3))
 
 
@@ -2323,8 +2323,8 @@ FDR = round((1/EDR - 1)*(alpha/(1-alpha)),2);
 names(FDR) = "FDR"
 FDR
 
-res = c(ODR,ERR,EDR,FDR,fit)
-names(res) = c("ODR","ERR","EDR","FDR","FIT")
+res = c(ODR,EDR,ERR,FDR,fit)
+names(res) = c("ODR","EDR","ERR","FDR","FIT")
 
 #print("Check res")
 #print(res)
@@ -2474,7 +2474,7 @@ if (boot.iter > 0 & Est.Method %in% c("OF","EM") )  {
 
 
 	res.text = rbind(res.with.ci[1:4,],p.bias)
-	rownames(res.text) = c("ODR","ERR","EDR","FDR","bias")
+	rownames(res.text) = c("ODR","EDR","ERR","FDR","bias")
 	round(res.text,3)
 
 	res = c(res,w.all)
