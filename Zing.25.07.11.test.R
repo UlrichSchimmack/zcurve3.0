@@ -139,6 +139,7 @@ fit.ci <- c(.01, .025, .05, .10, .17, .20, .50, .80, .83, .90, .95, .975, .99)  
 TEST4BIAS <- FALSE                  # Enable optional bias test
 TEST4HETEROGENEITY <- 0             # Optional heterogeneity test (slow) — set number of bootstrap iterations
 
+
 ### DISPLAY FINAL STATUS
 
 print(version)
@@ -620,7 +621,7 @@ x_pos
 
 mtext(lab, side=1, line=.8, at=x_pos, cex=1.0, las=2)
 
-
+par(mar = old_mar) 
 
 }
 
