@@ -4,7 +4,7 @@
 ### SETTING PARAMETERS FOR Z-CURVE MODEL
 ########################################################################
 
-version <- "Version 25.08.25"   # Version label to appear on plots
+version <- "Version 25.10.10"   # Version label to appear on plots
 
 # Optional cleanup 
 # rm(list = ls())
@@ -94,7 +94,7 @@ col.kd <- "green3"
 
 Est.Method <- "OF"                  # Estimation method: "OF", "EM", or "EXT"
                                     # Clustered Data: "CLU-W" (weighted),"CLU-B" (bootstrap)   
-Int.Beg <- c()                      # Default: critical value for alpha = .05
+Int.Beg <- 1.96                     # Default: critical value for alpha = .05
 Int.End <- 6                        # End of modeling interval (z > 6 = power = 1)
 
 ncp <- 0:6                          # Component locations (z-values at which densities are centered)
@@ -227,19 +227,24 @@ res.boot = c()
 
 boot.i = 1
 for (boot.i in 1:boot.run ) {
-	#print(boot.i)
+	print(boot.i)
+
 	zboot = sample(val.input,replace=TRUE)
+	summary(zboot)
+
 	ncp = 2
 	zsds = 1
 	components = length(ncp)
 	para.est.EXT = extended.curve(zboot,ncp,zsds);para.est.EXT
 	fit.hom = para.est.EXT[(3*components+1)];fit.hom
+
 	NCP.FIXED = FALSE
-	ncp = c(0,2,4)
-	zsds = c(1,1,1)
+	ncp = c(0,3)
+	zsds = c(1,1)
 	components = length(ncp)
 	para.est.EXT = extended.curve(zboot,ncp,zsds);para.est.EXT
 	fit.het.1 = para.est.EXT[length(para.est.EXT)];fit.het.1
+
 	ncp = 2
 	zsds = 5
 	components = length(ncp)
@@ -294,10 +299,6 @@ return(return.res)
 
 test.bias = function(w.all) {
 
-print("25.08.31")
-print("25.08.31")
-print("25.08.31")
-print("25.08.31")
 #Int.Beg = 2 + .4
 
 D.X = seq(x.lim.min,x.lim.max,.01)
@@ -655,19 +656,6 @@ Draw.Histogram = function(w,cola="blue3",
 	col1 = adjustcolor(cola, alpha.f = 0.2)
 	col2 = adjustcolor(cola, alpha.f = 0.3)
 
-	#par(mgp = c(4, 1, 2))
-
-	#graphics.off()
-	###z.hist = val.input
-	### draw a histogram of observed z-scores
-
-	#plot(0, 0, type="n", xlim = c(x.lim.min, x.lim.max), ylim = c(ymin, ymax),
-   	#  xlab = "absolute z-value", ylab = "Density")
-	#par(new=TRUE)
-
-	#print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! ymax")
-	#print(ymax)
-
 	hist(z.hist,breaks=n.breaks,freq=FALSE,
 		col=col1,border="white",
 		xlim=c(x.lim.min,x.lim.max),ylim=c(ymin,ymax),
@@ -680,20 +668,15 @@ Draw.Histogram = function(w,cola="blue3",
 
 	par(new=TRUE)
 
-	bars = table(cut(z.hist,n.breaks))
-	bars = bars/length(z.hist)/hist.bar.width
-	sum(bars * hist.bar.width)
-	names(bars) = as.character(n.breaks[2:length(n.breaks)])
-	bars
+	bars1 = table(cut(z.hist,seq(x.lim.min,x.lim.max,.1)))
+	bars1 = bars1 / sum(bars1)
+	sum(bars1)
+	names(bars1) = as.character(seq(x.lim.min+.1,x.lim.max,.1)-.1)
 
-	bars1 = bars
-	bars2 = bars[(which(names(bars) == as.character(int.start))+1):length(bars)]
+	bars2 = bars1[(which(names(bars1) == as.character(int.start))):length(bars1)]
 	bars2
  	sum(bars2)
-
 	
-	#barplot(bars2,beside=TRUE,col=col2)
-
 	scale = sum(bars1)/sum(bars2)
 
 	ymax.scale = (ymax+ymin)*scale
@@ -1644,6 +1627,8 @@ return(c(res))
 
 Compute.Power.Z = function(para,Int.Beg=crit,BOOT=FALSE) {
 
+crit = qnorm(alpha/2,lower.tail=FALSE)
+
 #para = para.est.OF
 #para = res.1$w.all
 
@@ -2154,9 +2139,6 @@ fit = para.est.OF[components+1];fit
 
 para.est.OF = c(para.est.OF[1:components],ncp,zsds)
 
-#print("para.est.OF")
-#print(round(para.est.OF,2))
-
 if (CURVE.TYPE == "z") {
   cp.res = Compute.Power.Z(para.est.OF,Int.Beg=Int.Beg)
 } else {
@@ -2249,7 +2231,6 @@ if (Est.Method == "EXT") {
 ##########################################################
 
  
-
 ### if requested, run slower EM
 ### Est.Method = "EM"
 if(Est.Method == "EM" & boot.iter == 0) {
@@ -2257,31 +2238,51 @@ if(Est.Method == "EM" & boot.iter == 0) {
 	components = length(ncp)	
 	#summary(val.input)
 	#print("Fitting EM")
-	res.em = run.zcurve(val.input,Est.Method="EM",boot.iter=boot.iter,
+
+	#Int.Beg = 2.4; alpha = .005
+
+	res.em = run.zcurve(val.input,Est.Method="EM",boot.iter=boot.iter,alpha=alpha,
 		Int.Beg=Int.Beg,Int.End=Int.End,parallel=parallel)
 	summary(res.em)     
-	para.est.EM = c(summary(res.em, type="parameters")$coefficients)
-	para.est.EM = para.est.EM[c((components+1):(2*components),1:components)]
-	para.est.EM = c(para.est.EM,ncp)
-	para.est.EM
-	
+
 	fit = res.em$fit$Q
+	fit
 
-	w.inp =	 summary(res.em, type="parameters")$coefficients[(components+1):(2*components)]
-	round(w.inp,3)
+	para.est.EM = res.em$fit$weights
+	para.est.EM
 
-	cp.em = Compute.Power.Z(Int.Beg = Int.Beg,c(w.inp,ncp,zsds))
-	round(cp.em,3)
+	para.est.EM = c(para.est.EM,ncp,zsds)
 
-	w.all = cp.em[which(substring(names(cp.em),1,5) == "w.all")]
-	round(w.all,3)
+	cp.res = Compute.Power.Z(para.est.EM,Int.Beg=Int.Beg)
+	cp.res
+
+	if (1 == 2) {
+
+		para.est.OF = old.fashioned(val.input)
+		fit = para.est.OF[components+1];fit
+		para.est.OF = c(para.est.OF[1:components],ncp,zsds)
+		cp.res.of = Compute.Power.Z(para.est.OF,Int.Beg=Int.Beg)
+
+		summary(res.em)$coefficients[2:1]
+		cp.res[c(1,4)]
+		cp.res.of[c(1,4)]
+
+	}
+
+
+	EDR = cp.res[1];EDR
+	ERR = cp.res[4];ERR
+
+	w.all = cp.res[which(substring(names(cp.res),1,5) == "w.all")]
+	w.all
 	sum(w.all)
+
+	w.sig = cp.res[which(substring(names(cp.res),1,5) == "w.sig")]
+	round(w.sig,3)
 
 	loc.power = cp.res[which(substring(names(cp.res),1,2) == "lp")]
 	round(loc.power,3)
 
-	EDR = res.em$coefficients[2];EDR
-	ERR = res.em$coefficients[1];ERR
 
 	#print("Finished EM")
 } 
@@ -2453,7 +2454,8 @@ if (Show.Histogram & sum(extreme,na.rm=TRUE) < .95) {
 res.het = NA
 if (TEST4HETEROGENEITY > 0) {
 	boot.run = TEST4HETEROGENEITY
-	res.het = run.heterogeneity.test(val.input,boot.run=boot.run,fit.ci)
+	if (!is.numeric(TEST4HETEROGENEITY)) print("!!! Need to provide number of iterations!!!")
+	else res.het = run.heterogeneity.test(val.input,boot.run=boot.run,fit.ci)
 	}
 
 
