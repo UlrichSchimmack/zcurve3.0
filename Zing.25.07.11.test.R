@@ -2129,7 +2129,7 @@ names(extreme) = c("Ext.Neg","Ext.Pos")
 ### OLD FASHIONED Z-CURVE 
 
 
-if (Est.Method %in% c("OF","EM")) {
+if (Est.Method %in% c("OF","EM","CLU")) {
 
 
 para.est.OF = old.fashioned(val.input)
