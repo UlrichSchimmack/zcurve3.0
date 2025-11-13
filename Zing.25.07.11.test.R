@@ -2390,7 +2390,6 @@ if (Est.Method %in% c("CLU", "CLU-W","CLU-B") & boot.iter >= 0) {
 	w.inp =	 summary(z.clu, type="parameters")$coefficients[(components+1):(2*components)]
 	round(w.inp,3)
 
-	print("Computing Power for Cluster Method")
 	cp.res = Compute.Power.Z(Int.Beg = Int.Beg,c(w.inp,ncp,zsds))
 	round(cp.res,3)
 
@@ -2407,9 +2406,6 @@ if (Est.Method %in% c("CLU", "CLU-W","CLU-B") & boot.iter >= 0) {
 	ERR = summary(z.clu)$coefficients[1,];ERR
 	FDR = round((1/EDR - 1)*(alpha/(1-alpha)),2)[c(1,3,2)];FDR
 
-	#print("FDR!!!!!!!!!!!!!!!!!!!!!!!!!")
-	#print(FDR)
-
 } # EOF Cluster Method 
 
 
@@ -2421,6 +2417,9 @@ if (Est.Method %in% c("CLU", "CLU-W","CLU-B") & boot.iter >= 0) {
 ##########################################
 
 if (Show.Histogram & sum(extreme,na.rm=TRUE) < .95) { 
+
+	print("SHOW RESULTS")
+	print(res.text)
 
 	Draw.Histogram(w.all,results=res.text,cola=col.hist)
 
@@ -2533,6 +2532,7 @@ if (boot.iter > 0 & Est.Method == "EXT") {
 
 if (boot.iter > 0 & substring(Est.Method,1,3) == "CLU") {
 
+	#print("MAKE RESTEXT 4 CLU")
 
 	results = rbind(c(ODR,ODR.low,ODR.high),EDR,ERR,FDR)
 	rownames(results) = c("ODR","EDR","ERR","FDR")
@@ -2546,13 +2546,10 @@ if (boot.iter > 0 & substring(Est.Method,1,3) == "CLU") {
 
 	#print(round(res.text,3))
 
-	
-	
 	res = res.text
 	res
 
 }
-
 
 if (boot.iter > 0 & Show.Histogram) {
 
