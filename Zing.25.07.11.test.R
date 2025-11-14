@@ -429,7 +429,7 @@ if (TESTING) {
 
 EXT.boot = function()	{
 
-		#Z.INT = z.rep
+		#INT = z.rep
 
 		boot = 1
 		boot.res = c()
@@ -439,13 +439,13 @@ EXT.boot = function()	{
 		for (boot in 1:boot.iter) {
 
 			### Get Bootstrap Sample
-   		  	z.sample = sample(Z.INT, size=length(Z.INT), replace=TRUE)
+   		  	val.sample = sample(INT, size=length(Z.INT), replace=TRUE)
 
 			### Submit Bootstrap Sample to Parameter Estimation Function
 
 			if (Show.Iterations) print(paste0("EXT.boot Iteration: ",boot))
 
-			para.est.EXT = extended.curve(z.sample,ncp,zsds);para.est.EXT
+			para.est.EXT = extended.curve(val.sample,ncp,zsds);para.est.EXT
 		
 			fit = para.est.EXT[(3*components+1)];fit
 			para.est.EXT = para.est.EXT[1:(3*components)]
