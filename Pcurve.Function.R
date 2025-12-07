@@ -1,5 +1,9 @@
 
 
+### This r-code is lightly modified to work as a function from the shared code by Uri
+
+Title = ""
+
 ###################################################################################################################
 #This is the R Code behind the p-curve app 4.052
 #Last updated: 2017 03 17
@@ -430,6 +434,7 @@ prop33=function(pc)
     red=c(20,20,20,20,20)
 
   if(SHOW.PLOT) {
+  print(Title)
   
   #5.4 Make the graph
   #Note: R_temp & filek are parameterS set at the beggining of the program for the location of files
@@ -447,7 +452,7 @@ prop33=function(pc)
       legend.top=100+moveup
     
 #5.4.4 Start the plot  
-      plot(x,blue,   type='l', col='dodgerblue2',  main="",
+      plot(x,blue,   type='l', col='dodgerblue2',  main=Title,
            lwd=2, xlab="", ylab="", xaxt="n",yaxt="n", xlim=c(0.01,0.051),
            ylim=ylim, bty='L', las=1,axes=F)  	
 
@@ -690,12 +695,12 @@ prop33=function(pc)
 #  plotdrop(drophigh.33,col="springgreen4")
 
 #33%  Skew label
-  mtext("33% power\n\n",line=7,side = 2,cex=1.25,las=1,col="springgreen4")
-  mtext(bquote("(Full "*italic(p)*"-curve)"),line=7,side = 2,cex=1,las=1,col="springgreen4") 
+#  mtext("33% power\n\n",line=7,side = 2,cex=1.25,las=1,col="springgreen4")
+#  mtext(bquote("(Full "*italic(p)*"-curve)"),line=7,side = 2,cex=1,las=1,col="springgreen4") 
 #Labels bottom left of chart
-    mtext(side=2,line=4.5,bquote(italic(P)*"-value of overall test"),font=2,cex=1.25)
-    mtext(side=2,line=3,"(Stouffer's method)",font=3,cex=1)
-    mtext(side=1,line=2.5,bquote(bold("Number of tests dropped (")*bolditalic("k")*")"),cex=1.15)
+#   mtext(side=2,line=4.5,bquote(italic(P)*"-value of overall test"),font=2,cex=1.25)
+#   mtext(side=2,line=3,"(Stouffer's method)",font=3,cex=1)
+#   mtext(side=1,line=2.5,bquote(bold("Number of tests dropped (")*bolditalic("k")*")"),cex=1.15)
 #Plot (6)
 #  plotdrop(droplow.33,col="springgreen4")
 #Labels bottom right of chart
