@@ -4,7 +4,7 @@
 ### SETTING PARAMETERS FOR Z-CURVE MODEL
 ########################################################################
 
-version <- "Version 25.10.10"   # Version label to appear on plots
+version <- "Version 25.11.13"   # Version label to appear on plots
 
 # Optional cleanup 
 # rm(list = ls())
@@ -310,10 +310,6 @@ means = ncp
 sds = zsds
 w = w.all
 
-print(means)
-print(sds)
-print(w)
-
 
 ### get the densities for each interval and each non-centrality parameter
 Dens	= c()
@@ -349,33 +345,46 @@ Dens = matrix(Dens,length(ncp),byrow=FALSE)
 row.sum.dens = rowSums(Dens)
 Dens = Dens/(row.sum.dens * bar.width)
 dim(Dens)
-summary(Dens)
 
 ### compute the new estimated density distribution
 E.D.Y = colSums(Dens*w)
 length(E.D.Y)
 
+E.D.Y = E.D.Y / sum(E.D.Y * bar.width)
 sum(E.D.Y * bar.width)
-prob1 = sum(E.D.Y[D.X > crit & D.X < Int.Beg]*bar.width)
-prob1
-prob2 = sum(E.D.Y[D.X > crit & D.X < Int.End]*bar.width)
-prob2 
-prob = prob1 / prob2
-prob.adj = prob + .02 
-#prob.adj = prob
+
+prob1 = sum(E.D.Y[D.X > crit & D.X < crit + just]*bar.width);prob1
+prob2 = sum(E.D.Y[D.X > crit + just & D.X < Int.End]*bar.width);prob2
+prob3 = sum(E.D.Y[D.X < crit]*bar.width);prob3
+sum(prob1,prob2,prob3)
+prob = prob1 / (prob1 + prob2)
 prob
+adj = .00
+prob.adj = prob + adj 
+
+k = length(val.input[val.input < Int.End])
 
 sig.k = length(val.input[val.input > crit & val.input < Int.End])
 sig.k
 
-just.sig.k = length(val.input[val.input > crit & val.input < Int.Beg])
+#Int.Beg = 0
+
+just.sig.k = length(val.input[val.input > crit & val.input < crit + just])
 just.sig.k
 
 just.sig.k/sig.k
 
 ### binomial
-p.bias.binomial = 1 - pbinom(just.sig.k - 1, sig.k, prob = prob.adj)
-#print(p.bias.binomial)
+p.bias.binomial = 1 - pbinom(just.sig.k - 1, sig.k, prob = prob.adj);p.bias.binomial
+p.bias.binomial
+print(p.bias.binomial)
+
+
+### for all
+#prob = prob1 / (prob1 + prob2 + prob3)
+#just.sig.k/k
+#p.bias.binomial = 1 - pbinom(just.sig.k - 1, k, prob = prob.adj);p.bias.binomial
+
 
 ### chi2 approximation
 #O = just.sig.k
@@ -439,7 +448,7 @@ EXT.boot = function()	{
 		for (boot in 1:boot.iter) {
 
 			### Get Bootstrap Sample
-   		  	val.sample = sample(INT, size=length(Z.INT), replace=TRUE)
+   		  	val.sample = sample(INT, size=length(INT), replace=TRUE)
 
 			### Submit Bootstrap Sample to Parameter Estimation Function
 
