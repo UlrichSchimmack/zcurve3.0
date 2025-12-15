@@ -2101,6 +2101,8 @@ if (two.sided) val.input = abs(val.input)
 val.input[val.input > MAX.INP.Z] = MAX.INP.Z
 length(val.input)
 
+print("CHECK CHECK CHECK CHECK CHECK CHECK ")
+print(length(val.input))
 if (length(val.input) > 10) print("!START!") else print("Insufficient Data")
 
 print(paste0("Title: ",Title))
