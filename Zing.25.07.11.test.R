@@ -158,7 +158,6 @@ print("Parameter OK")
 
 Zing = function(val.input,df=c(),cluster.id=c(),p=c(), lp=c()) {
 
-
 ##################################################################
 
 ### Functions used in Zing
@@ -2148,7 +2147,6 @@ if (Est.Method %in% c("OF","EM","CLU")) {
 
 
 para.est.OF = old.fashioned(val.input)
-
 
 fit = para.est.OF[components+1];fit
 
