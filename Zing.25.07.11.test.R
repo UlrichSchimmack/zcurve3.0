@@ -156,7 +156,7 @@ print("Parameter OK")
 ##################################################################
 ##################################################################
 
-Zing = function(val.input,df=c(),cluster.id=c(),lp=c()) {
+Zing = function(val.input,df=c(),cluster.id=c(),p=c(), lp=c()) {
 
 
 ##################################################################
@@ -2051,7 +2051,6 @@ return(res)
 
 
 
-
 #####################################
 ### BBB ZingStart #START #Begin of Main Program 
 ### BBB ZingStart #START #Begin of Main Program 
@@ -2062,6 +2061,11 @@ return(res)
 #####################################
 
 
+if (length(p) > 0) {
+  val.input = qnorm(1-p/2)
+}
+
+print(val.input)
 
 if (substring(Est.Method,1,3) == "CLU") {
 	if (length(cluster.id > 0)) {
