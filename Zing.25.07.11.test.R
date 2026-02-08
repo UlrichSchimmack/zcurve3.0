@@ -642,12 +642,33 @@ par(mar = old_mar)
 Draw.Histogram = function(w,cola="blue3",
 	results,Write.CI = FALSE) {
 
-	#w = w.all;cola = "blue3"; results = res.text
+#	int.start = round(Int.Beg,1)
+#	if (round(Int.Beg,2) == 1.96) int.start = 2
 
-	int.start = Int.Beg
-	if (round(Int.Beg,2) == 1.96) int.start = 2
 
-	z.hist = val.input[val.input > x.lim.min & val.input < x.lim.max]
+#w = w.all;cola = "blue3"; results = res.text
+
+
+make_breaks_straddle <- function(Int.Beg=1.96, bw=.2, x_min, x_max) {
+  # Put Int.Beg at the center of a bin
+  start0 <- Int.Beg - bw/2
+
+  # Shift left so that start <= x_min
+  n_left <- ceiling((start0 - x_min) / bw)
+  start <- start0 - n_left * bw
+
+  # Ensure we go past x_max
+  end <- start + ceiling((x_max - start) / bw) * bw
+
+  seq(start, end, by = bw)
+}
+
+#bw = .2
+brks <- make_breaks_straddle(Int.Beg, bw, x.lim.min, x.lim.max)
+
+
+
+	z.hist.val = val.input[val.input > x.lim.min & val.input < x.lim.max]
 	if (round(Int.Beg,2) == 1.96) {
 		z.hist = val.input[val.input > x.lim.min & val.input < x.lim.max -.04] + .04
 	}
@@ -664,38 +685,47 @@ Draw.Histogram = function(w,cola="blue3",
 	col1 = adjustcolor(cola, alpha.f = 0.2)
 	col2 = adjustcolor(cola, alpha.f = 0.3)
 
-	hist(z.hist,breaks=n.breaks,freq=FALSE,
+	h.res = hist(z.hist.val,breaks=brks,freq=FALSE,
 		col=col1,border="white",
 		xlim=c(x.lim.min,x.lim.max),ylim=c(ymin,ymax),
 		ylab="Density",xlab="",axes=FALSE,main=Title,lwd=1)
 
-	axis(2, ylim = c(0,ymax))
 
-	axis(1, line = 2)  # draw x-axis lower
-
+	bin_left  <- h.res$breaks[-length(h.res$breaks)]
+	bin_right <- h.res$breaks[-1]
+	dark_bins <- bin_left >= Int.Beg
 
 	par(new=TRUE)
 
-	bars1 = table(cut(z.hist,seq(x.lim.min,x.lim.max,.1)))
-	bars1 = bars1 / sum(bars1)
-	sum(bars1)
-	names(bars1) = as.character(seq(x.lim.min+.1,x.lim.max,.1)-.1)
+op <- par(mar = c(6, 4, 2, 2)) 
 
-	bars2 = bars1[(which(names(bars1) == as.character(int.start))):length(bars1)]
-	bars2
- 	sum(bars2)
-	
-	scale = sum(bars1)/sum(bars2)
+plot(
+  h.res,
+  col = NA,
+  border = NA,
+  xlab = "",
+  ylab = "Density",
+  ylim = c(0, ymax),
+  main = "",
+  xaxt = "n",   # suppress x-axis
+  yaxt = "n"
+)
 
-	ymax.scale = (ymax+ymin)*scale
+abline(h = 0, col = "black", lwd = 1)
 
-	hist(z.hist[z.hist > round(Int.Beg,1) & z.hist < Int.End],
-		breaks=n.breaks,freq=FALSE,
-		col=col2,border="white",
-		xlim=c(x.lim.min,x.lim.max),ylim=c(ymin,ymax.scale),
-		ylab=,xlab="",main=Title,lwd=1,axes=FALSE)
+for (i in seq_along(bin_left)) {
+  rect(
+    xleft   = bin_left[i],
+    ybottom = 0,
+    xright  = bin_right[i],
+    ytop    = h.res$density[i],
+    col     = if (dark_bins[i]) col2 else col1,
+    border  = "black"
+  )
+}
 
-
+axis(2, at = pretty(c(0, ymax)))
+axis(1, line = 2)  # draw x-axis lower
 
 ######################################### 
 ######################################### 
@@ -935,7 +965,8 @@ hist(c(0),main="",ylim=c(ymin,ymax),ylab="",xlab="",xlim=c(x.lim.min,x.lim.max),
 } # End of Show.Text
 
 
-abline(h=0)
+### restore default graphic parameters
+par(op)
 
 
 } # End of Histogram
@@ -1306,6 +1337,8 @@ return(D)
 ### Old Fashioned Density Method
 #######################################################
 
+#weight = startval
+
 old.fashioned = function(val.input,cola = "springgreen2") {
 
 curve.fitting = function(theta,RetEst=FALSE)    {
@@ -1401,7 +1434,7 @@ Dens = Dens/(sum.dens * bar.width)
 dim(Dens)
 
 startval = rep(1/(components),components)
-startval[1] = 1
+#startval[1] = 1
 startval = startval/sum(startval)
 startval
 
@@ -2064,8 +2097,6 @@ if (length(p) > 0) {
   val.input = qnorm(1-p/2)
 }
 
-print(val.input)
-
 if (substring(Est.Method,1,3) == "CLU") {
 	if (length(cluster.id > 0)) {
 	   clu.inp = data.frame(val.input,cluster.id)
@@ -2083,6 +2114,7 @@ if (CURVE.TYPE == "z") {
  } else {
   crit = qt(alpha/2,df,lower.tail=FALSE)
 }
+crit
 
 if (length(Int.Beg) == 0) Int.Beg = crit
 
@@ -2100,8 +2132,6 @@ if (two.sided) val.input = abs(val.input)
 val.input[val.input > MAX.INP.Z] = MAX.INP.Z
 length(val.input)
 
-print("CHECK CHECK CHECK CHECK CHECK CHECK ")
-print(length(val.input))
 if (length(val.input) > 10) print("!START!") else print("Insufficient Data")
 
 print(paste0("Title: ",Title))
@@ -2142,10 +2172,11 @@ names(extreme) = c("Ext.Neg","Ext.Pos")
 
 ### OLD FASHIONED Z-CURVE 
 
+#zsds = rep(1,components)
 
 if (Est.Method %in% c("OF","EM","CLU")) {
 
-
+#summary(val.input)
 para.est.OF = old.fashioned(val.input)
 
 fit = para.est.OF[components+1];fit
