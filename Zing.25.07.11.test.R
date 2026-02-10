@@ -666,12 +666,11 @@ make_breaks_straddle <- function(Int.Beg=1.96, bw=.2, x_min, x_max) {
 brks <- make_breaks_straddle(Int.Beg, bw=.2, x.lim.min, x.lim.max)
 
 
-
 	z.hist.val = val.input[val.input > x.lim.min & val.input < x.lim.max]
 	if (round(Int.Beg,2) == 1.96) {
-		z.hist = val.input[val.input > x.lim.min & val.input < x.lim.max -.04] + .04
+		z.hist.val = val.input[val.input > x.lim.min & val.input < x.lim.max -.04] + .04
 	}
-	table(z.hist > 1.96)
+	table(z.hist.val > 1.96)
 
 	n.breaks = seq(x.lim.min,x.lim.max,hist.bar.width);n.breaks
 
