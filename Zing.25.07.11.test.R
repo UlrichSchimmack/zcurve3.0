@@ -663,8 +663,7 @@ make_breaks_straddle <- function(Int.Beg=1.96, bw=.2, x_min, x_max) {
   seq(start, end, by = bw)
 }
 
-#bw = .2
-brks <- make_breaks_straddle(Int.Beg, bw, x.lim.min, x.lim.max)
+brks <- make_breaks_straddle(Int.Beg, bw=.2, x.lim.min, x.lim.max)
 
 
 
