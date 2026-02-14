@@ -1843,6 +1843,14 @@ paste0("w.all.",ncp[1:components]),paste0("w.sig",ncp[1:components]) )
 res
 
 
+local.power <- c()
+for (i in 1:(length(int)-1)) {
+  segment <- (ncp.grid >= int[i]) & (ncp.grid < int[i+1])
+  denom <- sum(dd[segment])
+  local.power <- c(local.power, if (denom == 0) NA else sum(power[segment] * dd[segment]) / denom)
+}
+
+
 if (int.loc > 0) {
 
 	bar.width = .01 # how fine should be the resolution
@@ -1913,7 +1921,7 @@ est.cw.all = w.all
 est.ncp = para[(1+components):(2*components)];est.ncp
 est.zsds = para[(1+2*components):(3*components)];est.zsds
 est.zsds[est.zsds < 1] = 1  
-est.zncp.sd = sqrt(est.zsds^2 - 1);est.zncp.sd
+est.tau = sqrt(est.zsds^2 - 1);est.zncp.sd
 est.components = length(est.ncp)
 
 #curve(dnorm(x,est.ncp,est.zncp.sd),0,6)
@@ -1984,65 +1992,47 @@ names(res) = c("EDR","EDR.pos","EDR.neg","ERR","ERR.pos","ERR.neg",
 paste0("w.all.",ncp[1:components]),paste0("w.sig.",ncp[1:components]))
 res
 
-if (int.loc > 0 & BOOT==FALSE) {
-
-	zx.bw = .01
-	zx = seq(x.lim.min,x.lim.max,zx.bw)
-	pow.zx.dir = pnorm(abs(zx),1.96) 
-	pow.zx.sign.error = + pnorm(-1.96,abs(zx))
-	pow.zx = pow.zx.dir + pow.zx.sign.error
-	
-	i = 1
-	est.wd.all = c()
-	for (i in 1:est.components) {
-		if (est.zncp.sd[i] == 0) {
-			wd = rep(0,length(zx))
-			wd[which(round(zx,2) == round(est.ncp[i],2))] = 1
-		} else {
-			wd = dnorm(zx,est.ncp[i],est.zncp.sd[i])
-		}
-		wd = wd/sum(wd)
-		wd = wd*est.cw.all[i]
-		sum(wd)
-		est.wd.all = rbind(est.wd.all,wd)
-	}
-
-	dim(est.wd.all)
-
-	est.wd.all = colSums(est.wd.all)
-	est.wd.all = est.wd.all/sum(est.wd.all)
-	sum(est.wd.all)
-
-	#plot(zx,est.wd.all)
-
-	sim.z = seq(x.lim.min,x.lim.max,.01)
-	x = sim.z[1]
-	loc.p = unlist(lapply(sim.z,function(x) 
-		sum(pow.zx*dnorm(x,est.wd.all))/sum(dnorm(x,est.wd.all)) 
-	))
-
-	loc.p
+if (int.loc > 0) {
 
 
-	### compute local mean power for different intervals
-	### each local power value is weighted by the density 
-	int = seq(x.lim.min,x.lim.max,int.loc)
-	local.power = c()
-	i = 1
-	for (i in 1:(length(int)-1)) local.power = c(local.power,
-		sum(loc.p[zx > int[i] & zx < int[i+1]]*
-			est.wd.all[zx > int[i] & zx < int[i+1]])/
-		sum(est.wd.all[zx > int[i] & zx < int[i+1]])	 )		
-	names(local.power) = paste0("lp.",1:length(local.power))
-	local.power
-	res = c(res,local.power)
+# ---- local true-power by ncp segments (0..Int.End) ----
+bar.width <- 0.01
+ncp.grid <- seq(0, Int.End, by = bar.width)
 
-} #EOF int.loc
+# build density over TRUE ncp (sampling variance removed): mixture of normals on ncp axis
+dd <- 0
+for (k in 1:est.components) {
+  if (est.tau[k] < 0.1) {
+    # nearly discrete component
+    dd_k <- rep(0, length(ncp.grid))
+    dd_k[which(round(ncp.grid, 2) == round(est.ncp[k], 2))] <- 1
+  } else {
+    dd_k <- dnorm(ncp.grid, mean = est.ncp[k], sd = est.tau[k])
+  }
+  dd <- dd + est.cw.all[k] * dd_k
+}
+dd <- dd / sum(dd)
 
+power <- pnorm(ncp.grid,z.crit) + pnorm(-z.crit, ncp.grid) 
 
-res
+# segment edges
+int <- seq(0, Int.End, by = int.loc)
+
+local.power <- c()
+for (i in 1:(length(int)-1)) {
+  segment <- (ncp.grid >= int[i]) & (ncp.grid < int[i+1])
+  denom <- sum(dd[segment])
+  local.power <- c(local.power, if (denom == 0) NA else sum(power[segment] * dd[segment]) / denom)
+}
+names(local.power) <- paste0("lp.", seq_along(local.power))
+
+# append to output
+res <- c(res, local.power)
 
 #print("Compute Extended Power End")
+
+} ### end of local power
+
 
 ### to be past back to the main program from this function
 return(res)
