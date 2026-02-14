@@ -376,7 +376,7 @@ just.sig.k/sig.k
 ### binomial
 p.bias.binomial = 1 - pbinom(just.sig.k - 1, sig.k, prob = prob.adj);p.bias.binomial
 p.bias.binomial
-print(p.bias.binomial)
+#print(p.bias.binomial)
 
 
 ### for all
@@ -393,12 +393,14 @@ print(p.bias.binomial)
 #print(p.bias.chi2)
 
 bias.res = c(just.sig.k/sig.k,prob.adj,p.bias.binomial)
-print(bias.res)
+#print(bias.res)
 
 return(bias.res)
 
 } #EOF bias test
 
+#Test Bias
+#test.bias(w.all)
 
 
 ### function to run the zcurve package to get EM weights and fit
@@ -1883,7 +1885,7 @@ return(res)
 
 ###############################################################
 
-Compute.Power.SDG1 = function(para,BOOT=FALSE,Int.Beg=Int.Beg) {
+Compute.Power.SDG1 = function(para,BOOT=FALSE,Int.Beg=1.96) {
 
 ext.all = length(val.input[val.input > Int.End]) / 
 	length(val.input)
@@ -2085,7 +2087,7 @@ if (CURVE.TYPE == "z") {
  } else {
   crit = qt(alpha/2,df,lower.tail=FALSE)
 }
-crit
+print(crit)
 
 if (length(Int.Beg) == 0) Int.Beg = crit
 
