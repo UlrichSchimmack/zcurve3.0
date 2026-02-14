@@ -1921,10 +1921,8 @@ est.cw.all = w.all
 est.ncp = para[(1+components):(2*components)];est.ncp
 est.zsds = para[(1+2*components):(3*components)];est.zsds
 est.zsds[est.zsds < 1] = 1  
-est.tau = sqrt(est.zsds^2 - 1);est.zncp.sd
+est.tau = sqrt(est.zsds^2 - 1);est.tau
 est.components = length(est.ncp)
-
-#curve(dnorm(x,est.ncp,est.zncp.sd),0,6)
 
 ###
 
@@ -1937,11 +1935,11 @@ pow.zx = pow.zx.dir + pow.zx.sign.error
 i = 1
 est.wd.all = c()
 for (i in 1:est.components) {
-	if (est.zncp.sd[i] == 0) {
+	if (est.tau[i] < .01) {
 		wd = rep(0,length(zx))
 		wd[which(round(zx,2) == round(est.ncp[i],2))] = 1
 	} else {
-		wd = dnorm(zx,est.ncp[i],est.zncp.sd[i])
+		wd = dnorm(zx,est.ncp[i],est.tau[i])
 	}
 	wd = wd/sum(wd)
 	wd = wd*est.cw.all[i]
