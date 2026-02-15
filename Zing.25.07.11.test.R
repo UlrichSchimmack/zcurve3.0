@@ -4,7 +4,7 @@
 ### SETTING PARAMETERS FOR Z-CURVE MODEL
 ########################################################################
 
-version <- "Version 25.12.14"   # Version label to appear on plots
+version <- "Version 2026.02.15"   # Version label to appear on plots
 
 # Optional cleanup 
 # rm(list = ls())
@@ -78,7 +78,7 @@ bw.draw <- 0.10              # Smoothing for kernel density display
 
 ### CONSOLE OUTPUT
 
-Show.Iterations <- TRUE      # Show iterations for slow procedures (e.g., EXT, TEST4HETEROGENEITY)
+Show.Iterations <- FALSE      # Do not use with parallel Show iterations for slow procedures (e.g., EXT, TEST4HETEROGENEITY)
 
 ### MODEL PARAMETERS
 
@@ -439,12 +439,16 @@ if (TESTING) {
 
 EXT.boot = function()	{
 
-		#INT = z.rep
+         ncores <- floor(detectCores() * 0.7)
+         cl <- parallel::makeCluster(ncores)
+
+		#INT = val.input
 
 		boot = 1
 		boot.res = c()
 		
-		#boot.iter = 20
+		#boot.iter = 50;Show.Iterations = TRUE
+		#ncp;zsds
 		components = length(ncp)
 		for (boot in 1:boot.iter) {
 
@@ -464,15 +468,15 @@ EXT.boot = function()	{
 			w.inp = w.inp/sum(w.inp)
 			w.inp
 
-			ncp = para.est.EXT[(components+1):(2*components)]
-			ncp
+			est.ncp = para.est.EXT[(components+1):(2*components)]
+			est.ncp
 
-			zsds = para.est.EXT[(2*components+1):(3*components)]
-			zsds
+			est.zsds = para.est.EXT[(2*components+1):(3*components)]
+			est.zsds
 
-			cp.input = c(w.inp,ncp,zsds)
+			cp.input = c(w.inp,est.ncp,est.zsds)
 
-			if (mean(zsds) > 1.1) { cp.res = 
+			if (max(est.zsds) > 1.1) { cp.res = 
 				Compute.Power.SDG1(cp.input,BOOT=TRUE)
 			} else { cp.res = Compute.Power.Z(cp.input) }
 
@@ -487,7 +491,10 @@ EXT.boot = function()	{
 			w.all[is.na(w.all)] = 0
 			w.sig[is.na(w.sig)] = 0
 
-			boot.res = rbind(boot.res,c(ERR,EDR,fit,ncp,zsds,w.all,w.sig))
+			if(length(est.ncp) == 1) w.all = 1
+			if(length(est.ncp) == 1) w.sig = 1
+
+			boot.res = rbind(boot.res,c(ERR,EDR,fit,est.ncp,est.zsds,w.all,w.sig))
 			round(boot.res,3)
 
 		}
@@ -511,6 +518,10 @@ EXT.boot = function()	{
 		FDR = (1/CIs[2,] - 1)*(alpha/(1-alpha))
 		CIs = rbind(CIs,FDR[2:1])
 
+		CIs
+
+		boot.res
+
 		i = 6
 		boot.res[,6]
 		for (i in 3:dim(boot.res)[2]) CIs = rbind(CIs,quantile(boot.res[,i],
@@ -523,7 +534,8 @@ EXT.boot = function()	{
 			rep("WSIG",components)
 		)
 
-		if (components == 1) CIs[which(substring(rownames(CIs),1,1) == "W"),] = 1
+
+		round(CIs,2)
 
 		#dim(CIs)
 		#print(CIs)
@@ -531,13 +543,15 @@ EXT.boot = function()	{
 		return(CIs)
 
 
+         on.exit(parallel::stopCluster(cl))
+
 } # End function EXT.boot
 
 #####################################
 #####################################
 #####################################
 
-get.ci.info = function(Est.Method = "EM") {
+get.ci.info = function(Est.Method = "EM",point.est) {
 
 #val.input = abs(c(rnorm(1000,1.1),rnorm(1000,2.8)))
 #boot.iter = 0
@@ -548,7 +562,7 @@ if (Est.Method %in% c("OF","EM")) {
 zres = run.zcurve(val.input, Est.Method=Est.Method, alpha = alpha,boot.iter = boot.iter,
 	Int.Beg = Int.Beg, Int.End = Int.End,parallel=parallel)
 
-zres
+
 ERR = summary(zres)$coefficients[1,];ERR
 EDR = summary(zres)$coefficients[2,];EDR
 FDR = (1/EDR - 1)*(alpha/(1-alpha));FDR
@@ -590,13 +604,13 @@ print(round(res.ci,3))
 
 if (Est.Method == "EXT") {
 
-res.ci = EXT.boot()
+res.ci = cbind(point.est,EXT.boot())
 
-res.ci
+#res.ci = CIs
 
-#print("METHOD EXT")
-#print("RETURN res.ci")
-#print(res.ci)
+print("METHOD EXT")
+print("RETURN res.ci")
+print(res.ci)
 
 }
 
@@ -2011,7 +2025,7 @@ for (k in 1:est.components) {
 }
 dd <- dd / sum(dd)
 
-power <- pnorm(ncp.grid,z.crit) + pnorm(-z.crit, ncp.grid) 
+power <- pnorm(ncp.grid,crit) + pnorm(-crit, ncp.grid) 
 
 # segment edges
 int <- seq(0, Int.End, by = int.loc)
@@ -2476,7 +2490,7 @@ return.results = list(
   )
 
 
-
+#return.results
 
 ### code for confidence intervals 
 
@@ -2485,9 +2499,15 @@ return.results = list(
 ########################################################################
 
 ### If Confidence Intervals are requested, compute CI (boot.iter > 0)
-if (boot.iter > 0 & Est.Method %in% c("OF","EM") )  {
+if (boot.iter > 0 & Est.Method %in% c("OF","EM","EXT") )  {
 
-	res.with.ci = get.ci.info(Est.Method = Est.Method)
+	#ci.res;boot.iter = 20
+
+     point.est = c(return.results$res[c(3,2,4,5)],return.results$ncp,return.results$zsds,return.results$w.all,NA)
+
+	#res.with.ci = CIs
+	res.with.ci = get.ci.info(Est.Method = Est.Method,point.est)
+	res.with.ci
 
 	res.with.ci = rbind(ODR.res,res.with.ci,p.bias)
 	round(res.with.ci,3)
@@ -2497,15 +2517,14 @@ if (boot.iter > 0 & Est.Method %in% c("OF","EM") )  {
 	rownames(res.text) = c("ODR","EDR","ERR","FDR","bias")
 	round(res.text,3)
 
-	res = c(res,w.all)
+	res = res.with.ci
 	round(res,3)	 
-	length(res)
 
 }
 
 
 #boot.iter = 50	# Testing
-if (boot.iter > 0 & Est.Method == "EXT") {
+if (boot.iter > 0 & Est.Method == "EXTold") {
 
 	res.ci = get.ci.info(Est.Method = Est.Method)
 	res.ci = rbind(c(ODR.low,ODR.high),res.ci)
@@ -2590,9 +2609,9 @@ if (boot.iter > 0) {
 
 return.results = list(
     res = res.text[1:4,],
-    ncp = ncp,
-    zsds = res.zsds,
-    w.all = w.all,
+    ncp = res.with.ci[6,],
+    zsds = res.with.ci[7,],
+#    w.all = w.all,
     bias = p.bias,
     fit.comp = res.het
   )
