@@ -437,113 +437,125 @@ if (TESTING) {
 ############################################
 ############################################
 
-EXT.boot = function()	{
+EXT.boot = function(ZSDS.FIXED = TRUE)	{
 
-         ncores <- floor(detectCores() * 0.7)
-         cl <- parallel::makeCluster(ncores)
+	#boot.iter = 100
 
-		#INT = val.input
+	print(ZSDS.FIXED)
 
-		boot = 1
-		boot.res = c()
-		
-		#boot.iter = 50;Show.Iterations = TRUE
-		#ncp;zsds
-		components = length(ncp)
-		for (boot in 1:boot.iter) {
+    print("Running parallel bootstrap")
 
-			### Get Bootstrap Sample
-   		  	val.sample = sample(INT, size=length(INT), replace=TRUE)
-
-			### Submit Bootstrap Sample to Parameter Estimation Function
-
-			if (Show.Iterations) print(paste0("EXT.boot Iteration: ",boot))
-
-			para.est.EXT = extended.curve(val.sample,ncp,zsds);para.est.EXT
-		
-			fit = para.est.EXT[(3*components+1)];fit
-			para.est.EXT = para.est.EXT[1:(3*components)]
-
-			w.inp = para.est.EXT[1:components]
-			w.inp = w.inp/sum(w.inp)
-			w.inp
-
-			est.ncp = para.est.EXT[(components+1):(2*components)]
-			est.ncp
-
-			est.zsds = para.est.EXT[(2*components+1):(3*components)]
-			est.zsds
-
-			cp.input = c(w.inp,est.ncp,est.zsds)
-
-			if (max(est.zsds) > 1.1) { cp.res = 
-				Compute.Power.SDG1(cp.input,BOOT=TRUE)
-			} else { cp.res = Compute.Power.Z(cp.input) }
-
-			cp.res
-
-			EDR = cp.res[1];EDR
-			ERR = cp.res[4];ERR
-
-			w.all = cp.res[which(substring(names(cp.res),1,5) == "w.all")];w.all
-			w.sig = cp.res[which(substring(names(cp.res),1,5) == "w.sig")];w.all
-
-			w.all[is.na(w.all)] = 0
-			w.sig[is.na(w.sig)] = 0
-
-			if(length(est.ncp) == 1) w.all = 1
-			if(length(est.ncp) == 1) w.sig = 1
-
-			boot.res = rbind(boot.res,c(ERR,EDR,fit,est.ncp,est.zsds,w.all,w.sig))
-			round(boot.res,3)
-
-		}
-
-		#round(boot.res,3)
-
-		CIs = c()
-	
-		CIs = rbind(CIs,quantile(boot.res[,1],c(CI.ALPHA/2,1-CI.ALPHA/2)) )
-		CIs[1,1] = CIs[1,1]-ERR.CI.adjust
-		CIs[1,2] = CIs[1,2]+ERR.CI.adjust
-		if (CIs[1,1] < alpha/2) CIs[1,1] = alpha/2
-		if (CIs[1,2] > 1) CIs[1,2] = 1
-
-		CIs = rbind(CIs,quantile(boot.res[,2],c(CI.ALPHA/2,1-CI.ALPHA/2)) )
-		CIs[2,1] = CIs[2,1]-EDR.CI.adjust
-		CIs[2,2] = CIs[2,2]+EDR.CI.adjust
-		if (CIs[2,1] < alpha) CIs[2,1] = alpha
-		if (CIs[2,2] > 1) CIs[2,2] = 1
-
-		FDR = (1/CIs[2,] - 1)*(alpha/(1-alpha))
-		CIs = rbind(CIs,FDR[2:1])
-
-		CIs
-
-		boot.res
-
-		i = 6
-		boot.res[,6]
-		for (i in 3:dim(boot.res)[2]) CIs = rbind(CIs,quantile(boot.res[,i],
-			c(CI.ALPHA/2,1-CI.ALPHA/2)) )
-
-		rownames(CIs) = c("ERR","EDR","FDR","FIT",
-			rep("NCP",components),
-			rep("ZSD",components),
-			rep("WALL",components),
-			rep("WSIG",components)
-		)
+	run.time = system.time({
 
 
-		round(CIs,2)
+	components = length(ncp)
 
-		#dim(CIs)
-		#print(CIs)
+	ncores <- floor(parallel::detectCores() * 0.7)
+	cl <- parallel::makeCluster(ncores)
+	on.exit(parallel::stopCluster(cl), add = TRUE)
 
-		return(CIs)
+
+	# Make RNG reproducible across workers
+	parallel::clusterSetRNGStream(cl, 123)
+
+	# Export everything the workers need
+	parallel::clusterExport(cl, varlist = c(
+	 "val.input",
+	 "Get.Densities",
+	  "extended.curve",
+	  "Augment.Regression","Augment","Augment.Factor","bw.aug","bkde",
+	  "W.FIXED","NCP.FIXED","ZSDS.FIXED","TESTING","CURVE.TYPE",
+	  "components","ncp","zsds","crit","Int.Beg","Int.End","bw.est","alpha",
+	  "Plot.Fitting"
+	), envir = environment())
+
+	# If you use packages inside the iteration, load them on workers
+	parallel::clusterEvalQ(cl, { NULL })  # e.g., library(stats)
 
 
-         on.exit(parallel::stopCluster(cl))
+	results_cp <- parallel::parLapply(cl, 1:boot.iter, function(boot) {
+
+	  INT = val.input[val.input >= Int.Beg & val.input <= Int.End]
+
+	  val.sample <- sample(INT, size = length(INT), replace = TRUE)
+
+	  para.est.EXT <- extended.curve(val.sample, ncp, zsds)
+
+	  w.inp <- para.est.EXT[1:components]
+	  w.inp <- w.inp / sum(w.inp)
+
+	  est.ncp  <- para.est.EXT[(components+1):(2*components)]
+	  est.zsds <- para.est.EXT[(2*components+1):(3*components)]
+
+	list(
+	  w    = w.inp,
+	  ncp  = est.ncp,
+	  zsds = est.zsds
+	)
+
+
+	})  # End of Parallel Bootstrap
+
+
+	}) # End of System Time
+
+	print(run.time)
+    print("End of bootstrap")
+
+
+	boot_power <- lapply(results_cp, function(cp.input)
+  		Compute.Power.SDG1(cp.input, BOOT = TRUE, Int.Beg = 1.96)
+	)
+
+	boot.res1 <- do.call(rbind, boot_power)
+
+	CIs = c()
+	CIs = rbind(CIs,quantile(boot.res1[,4],c(CI.ALPHA/2,1-CI.ALPHA/2)) )
+	CIs[1,1] = CIs[1,1]-ERR.CI.adjust
+	CIs[1,2] = CIs[1,2]+ERR.CI.adjust
+	if (CIs[1,1] < alpha/2) CIs[1,1] = alpha/2
+	if (CIs[1,2] > 1) CIs[1,2] = 1
+
+	CIs = rbind(CIs,quantile(boot.res1[,1],c(CI.ALPHA/2,1-CI.ALPHA/2)) )
+	CIs[2,1] = CIs[2,1]-EDR.CI.adjust
+	CIs[2,2] = CIs[2,2]+EDR.CI.adjust
+	if (CIs[2,1] < alpha) CIs[2,1] = alpha
+	if (CIs[2,2] > 1) CIs[2,2] = 1
+
+	FDR = (1/CIs[2,] - 1)*(alpha/(1-alpha))
+	CIs = rbind(CIs,FDR[2:1])
+
+	CIs
+
+	# extract bootstrap draws into matrices (rows = boot iterations)
+	W.mat   <- do.call(rbind, lapply(results_cp, `[[`, "w"))
+	NCP.mat <- do.call(rbind, lapply(results_cp, `[[`, "ncp"))
+	ZSD.mat <- do.call(rbind, lapply(results_cp, `[[`, "zsds"))
+
+	# CIs by component
+	CI.W   <- apply(W.mat,   2, quantile, probs = c(CI.ALPHA/2, 1 - CI.ALPHA/2), na.rm = TRUE)
+	CI.NCP <- apply(NCP.mat, 2, quantile, probs = c(CI.ALPHA/2, 1 - CI.ALPHA/2), na.rm = TRUE)
+	CI.ZSD <- apply(ZSD.mat, 2, quantile, probs = c(CI.ALPHA/2, 1 - CI.ALPHA/2), na.rm = TRUE)
+
+	# assemble the parameter CI block in the order you want
+	CIs <- rbind(CIs, t(CI.NCP), t(CI.ZSD), t(CI.W))
+
+	CIs
+
+	rownames(CIs) <- c(
+      "ERR","EDR","FDR",
+	  rep("NCP", ncol(NCP.mat)),
+	  rep("ZSD", ncol(ZSD.mat)),
+	  rep("WALL", ncol(W.mat))
+	)
+
+
+	CIs = CIs[c(1,2,3:nrow(CIs)),]
+
+	round(CIs,2)
+
+	return(CIs)
+
 
 } # End function EXT.boot
 
@@ -604,13 +616,14 @@ print(round(res.ci,3))
 
 if (Est.Method == "EXT") {
 
-res.ci = cbind(point.est,EXT.boot())
+res.ext = EXT.boot(ZSDS.FIXED=ZSDS.FIXED)
+print(res.ext)
 
-#res.ci = CIs
+res.ci = cbind(point.est,res.ext)
 
-print("METHOD EXT")
-print("RETURN res.ci")
-print(res.ci)
+#print("METHOD EXT")
+#print("RETURN res.ci")
+#print(res.ci)
 
 }
 
@@ -1476,7 +1489,7 @@ return(res)
 ### USE EXTENDED CURVE (Est.Method = "EXT"  (slower than OF)
 ################################################################
 
-extended.curve = function(val.input,ncp=ncp,zsds=zsds) {
+extended.curve = function(vals,ncp=ncp,zsds=zsds) {
 
 #w.inp = 1;ncp = 4;zsds = 2;
 #weights = 1;means = 0;sds = 1;
@@ -1566,14 +1579,10 @@ return(value)
 
 ####
 
-### create set with z-scores in the interval used for model fitting
-INT = val.input[val.input >= Int.Beg & val.input <= Int.End]
-summary(INT)
-
 components = length(ncp);components
 
 #print(Augment)
-densy = Get.Densities(INT,bw=bw.est,d.x.min=Int.Beg,d.x.max=Int.End,Augment=Augment)
+densy = Get.Densities(vals,bw=bw.est,d.x.min=Int.Beg,d.x.max=Int.End,Augment=Augment)
 
 D.X = densy[,1]
 O.D.Y = densy[,2]
@@ -1909,6 +1918,12 @@ return(res)
 
 Compute.Power.SDG1 = function(para,BOOT=FALSE,Int.Beg=1.96) {
 
+
+  if (is.list(para)) {
+    para <- c(para$w, para$ncp, para$zsds)
+  }
+
+
 ext.all = length(val.input[val.input > Int.End]) / 
 	length(val.input)
 ext.all
@@ -2201,16 +2216,13 @@ if (Est.Method == "EXT") {
 
 	if (W.FIXED) w.inp = w.fix
 
-	ncp = para.est.EXT[(components+1):(2*components)]
-	ncp
+	ncp.est = para.est.EXT[(components+1):(2*components)]
+	ncp.est
 
-	zsds = para.est.EXT[(2*components+1):(3*components)]
-	zsds
+	zsds.est = para.est.EXT[(2*components+1):(3*components)]
+	zsds.est
 
-	#print("zsds")
-	#print(zsds)
-
-	if (max(zsds) < 1.05) {
+	if (max(zsds.est) < 1.05) {
 		print("SD==1")
 		if (CURVE.TYPE == "z") {
 			cp.res = Compute.Power.Z(para.est.EXT,Int.Beg=Int.Beg)
@@ -2226,9 +2238,6 @@ if (Est.Method == "EXT") {
 
 	EDR = cp.res[1];EDR
 	ERR = cp.res[4];ERR
-
-	#print("Check")
-	#print(cp.res)
 
 	w.all = cp.res[which(substring(names(cp.res),1,5) == "w.all")]
 	if (components == 1) w.all = 1
@@ -2376,9 +2385,6 @@ names(p.bias) = c("OBS.JS","EXP.JS","EJS.p")
 
 res.text = c(res[1:4],p.bias[3])
 
-res.zsds = zsds
-
-
 #print("RESULTS")
 #print(res.text)
 
@@ -2482,8 +2488,8 @@ print(round(res,3))
 
 return.results = list(
     res = res,
-    ncp = ncp,
-    zsds = res.zsds,
+    ncp = ncp.est,
+    zsds = zsds.est,
     w.all = w.all,
     bias = p.bias,
     fit.comp = res.het
@@ -2501,20 +2507,28 @@ return.results = list(
 ### If Confidence Intervals are requested, compute CI (boot.iter > 0)
 if (boot.iter > 0 & Est.Method %in% c("OF","EM","EXT") )  {
 
-	#ci.res;boot.iter = 20
+	#boot.iter = 100
 
-     point.est = c(return.results$res[c(3,2,4,5)],return.results$ncp,return.results$zsds,return.results$w.all,NA)
+    print("Start of CI")
+	print(return.results)
+
+     point.est = c(return.results$res[c(3,2,4)],return.results$ncp,return.results$zsds,return.results$w.all)
 
 	#res.with.ci = CIs
 	res.with.ci = get.ci.info(Est.Method = Est.Method,point.est)
 	res.with.ci
 
 	res.with.ci = rbind(ODR.res,res.with.ci,p.bias)
+
+	res.with.ci = data.frame(res.with.ci)
+	rownames(res.with.ci)[5:7] = c("NCP","ZSDS","W.ALL")
+
 	round(res.with.ci,3)
 
+	print(res.with.ci)
 
 	res.text = rbind(res.with.ci[1:4,],p.bias)
-	rownames(res.text) = c("ODR","EDR","ERR","FDR","bias")
+	rownames(res.text) = c("ODR","ERR","EDR","FDR","bias")
 	round(res.text,3)
 
 	res = res.with.ci
@@ -2609,14 +2623,16 @@ if (boot.iter > 0) {
 
 return.results = list(
     res = res.text[1:4,],
-    ncp = res.with.ci[6,],
-    zsds = res.with.ci[7,],
-#    w.all = w.all,
+    ncp = res.with.ci[5,],
+    zsds = res.with.ci[6,],
+    w.all = res.with.ci[7,],
     bias = p.bias,
     fit.comp = res.het
   )
 
 }
+
+#return.results
 
 
 return(return.results)
