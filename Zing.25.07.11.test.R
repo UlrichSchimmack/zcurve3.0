@@ -41,7 +41,7 @@ df = c()
 
 ### SPEED CONTROL
 
-parallel <- FALSE            # Placeholder – parallel functionality not yet implemented
+parallel <- TRUE             # Default - serial option not available
 max_iter <- 1e6              # Max iterations for model estimation
 max_iter_boot <- 1e5         # Max iterations for bootstrapped estimates
 
@@ -150,19 +150,96 @@ print("Parameter OK")
 ##################################################################
 
 
+Zing = function(val.input,df=c(),cluster.id=c(),p=c(), lp=c()) {
+
 ##################################################################
 ##################################################################
 ### AAA Start of Zing Code
 ##################################################################
 ##################################################################
 
-Zing = function(val.input,df=c(),cluster.id=c(),p=c(), lp=c()) {
-
 ##################################################################
 
 ### Functions used in Zing
 
 #######################################################################
+
+
+############################################################
+############################################################
+############################################################
+############################################################
+### SLOPE DIAGNOSTICS
+
+adj_density <- function(zval,
+                        Int.Beg = 1.96,
+                        z.crit = 1.96,
+                        bw = 0.1,
+                        aug.bw = 0.2,
+                        n.bars = 512,
+                        max.z = NULL,
+                        d.x.max = Int.Beg + 1) {
+  
+  zval <- abs(zval[is.finite(zval)])
+  if (length(zval) == 0) return(NULL)
+  
+  if (is.null(max.z)) max.z <- max(zval)
+  
+  if (Int.Beg < max.z) {
+    
+    AUG <- c()
+    
+    if (Int.Beg >= z.crit + 2*bw) {
+      AUG <- zval[zval > (Int.Beg - 2*bw) & zval < Int.Beg]
+    }
+    
+    if (Int.Beg < z.crit + 2*bw) {
+      n.AUG <- round(length(zval[zval > Int.Beg & zval < (Int.Beg + aug.bw)]))
+      if (n.AUG > 0) {
+        AUG <- seq(Int.Beg - aug.bw, Int.Beg - 0.01, aug.bw / n.AUG)
+      }
+    }
+    
+    Z.INT.USE <- c(zval, AUG)
+    
+  } else {
+    # If Int.Beg is beyond the data, there is nothing to estimate
+    return(NULL)
+  }
+  
+  density(Z.INT.USE, n = n.bars, bw = bw, from = Int.Beg, to = d.x.max)
+}
+
+
+slope_adj <- function(zval, Int.Beg = 1.96, width = 1, min_in_window = 10, ...) {
+  
+  zval <- abs(zval[is.finite(zval)])
+  k.slope <- sum(zval >= Int.Beg & zval <= (Int.Beg + width))
+  
+  slope <- NA_real_
+  
+  if (k.slope >= min_in_window) {
+    
+    d <- adj_density(zval, Int.Beg = Int.Beg, d.x.max = Int.Beg + width, ...)
+    if (!is.null(d)) {
+      
+      idx <- d$x < (Int.Beg + width) & is.finite(d$y)
+      
+      if (sum(idx) >= 5) {
+        fit <- lm(d$y[idx] ~ d$x[idx])
+        slope <- unname(coef(fit)[2])
+      }
+    }
+  }
+  
+  c(k.slope = k.slope, slope = slope)
+}
+
+############################################################
+### END OF SLOPE DIAGNOSTICS
+
+
+
 
 get.t.density = function(tx) {     
 
@@ -441,14 +518,15 @@ EXT.boot = function(ZSDS.FIXED = TRUE)	{
 
 	#boot.iter = 100
 
-	print(ZSDS.FIXED)
-
-    print("Running parallel bootstrap")
-
-	run.time = system.time({
-
-
 	components = length(ncp)
+
+	INT = val.input[val.input >= Int.Beg & val.input <= Int.End]
+
+	print("Running parallel bootstrap")
+
+	if (components > 4) {
+		print("More than 4 components. Really intended?")
+	} else {
 
 	ncores <- floor(parallel::detectCores() * 0.7)
 	cl <- parallel::makeCluster(ncores)
@@ -460,93 +538,95 @@ EXT.boot = function(ZSDS.FIXED = TRUE)	{
 
 	# Export everything the workers need
 	parallel::clusterExport(cl, varlist = c(
-	 "val.input",
+	 "INT",
 	 "Get.Densities",
-	  "extended.curve",
+	  "extended.curve","slope",
 	  "Augment.Regression","Augment","Augment.Factor","bw.aug","bkde",
 	  "W.FIXED","NCP.FIXED","ZSDS.FIXED","TESTING","CURVE.TYPE",
-	  "components","ncp","zsds","crit","Int.Beg","Int.End","bw.est","alpha",
+	  "startval","components","ncp","zsds","crit","Int.Beg","Int.End","bw.est","alpha",
 	  "Plot.Fitting"
 	), envir = environment())
 
 	# If you use packages inside the iteration, load them on workers
 	parallel::clusterEvalQ(cl, { NULL })  # e.g., library(stats)
 
+	run.time = system.time({
 
 	results_cp <- parallel::parLapply(cl, 1:boot.iter, function(boot) {
 
-	  INT = val.input[val.input >= Int.Beg & val.input <= Int.End]
-
 	  val.sample <- sample(INT, size = length(INT), replace = TRUE)
 
-	  para.est.EXT <- extended.curve(val.sample, ncp, zsds)
-
-	  w.inp <- para.est.EXT[1:components]
-	  w.inp <- w.inp / sum(w.inp)
-
-	  est.ncp  <- para.est.EXT[(components+1):(2*components)]
-	  est.zsds <- para.est.EXT[(2*components+1):(3*components)]
+	  para.est.EXT <- extended.curve(vals=val.sample, startval, ncp, zsds)
 
 	list(
-	  w    = w.inp,
-	  ncp  = est.ncp,
-	  zsds = est.zsds
+	  w.inp    = para.est.EXT$w.inp,
+	  ncp.est  = para.est.EXT$ncp.est,
+	  zsds.est = para.est.EXT$zsds.est,
+	  fit  = para.est.EXT$fit
 	)
-
-
-	})  # End of Parallel Bootstrap
 
 
 	}) # End of System Time
 
+
+	})  # End of Parallel Bootstrap
+
+	} # End of "too many components"
+
+
 	print(run.time)
-    print("End of bootstrap")
+
+	print("End of bootstrap")
 
 
 	boot_power <- lapply(results_cp, function(cp.input)
-  		Compute.Power.SDG1(cp.input, BOOT = TRUE, Int.Beg = 1.96)
+  		Compute.Power.SDG1(cp.input,Int.Beg = 1.96)
 	)
 
 	boot.res1 <- do.call(rbind, boot_power)
 
 	CIs = c()
-	CIs = rbind(CIs,quantile(boot.res1[,4],c(CI.ALPHA/2,1-CI.ALPHA/2)) )
+	CIs = rbind(CIs,quantile(boot.res1[,1],c(CI.ALPHA/2,1-CI.ALPHA/2)) )
 	CIs[1,1] = CIs[1,1]-ERR.CI.adjust
 	CIs[1,2] = CIs[1,2]+ERR.CI.adjust
 	if (CIs[1,1] < alpha/2) CIs[1,1] = alpha/2
 	if (CIs[1,2] > 1) CIs[1,2] = 1
 
-	CIs = rbind(CIs,quantile(boot.res1[,1],c(CI.ALPHA/2,1-CI.ALPHA/2)) )
+	CIs = rbind(CIs,quantile(boot.res1[,4],c(CI.ALPHA/2,1-CI.ALPHA/2)) )
 	CIs[2,1] = CIs[2,1]-EDR.CI.adjust
 	CIs[2,2] = CIs[2,2]+EDR.CI.adjust
 	if (CIs[2,1] < alpha) CIs[2,1] = alpha
 	if (CIs[2,2] > 1) CIs[2,2] = 1
 
-	FDR = (1/CIs[2,] - 1)*(alpha/(1-alpha))
+	FDR = (1/CIs[1,] - 1)*(alpha/(1-alpha))
 	CIs = rbind(CIs,FDR[2:1])
 
 	CIs
 
 	# extract bootstrap draws into matrices (rows = boot iterations)
-	W.mat   <- do.call(rbind, lapply(results_cp, `[[`, "w"))
-	NCP.mat <- do.call(rbind, lapply(results_cp, `[[`, "ncp"))
-	ZSD.mat <- do.call(rbind, lapply(results_cp, `[[`, "zsds"))
+	w.all.mat   <- do.call(rbind, lapply(results_cp, `[[`, "w.inp"))
+	NCP.mat <- do.call(rbind, lapply(results_cp, `[[`, "ncp.est"))
+	ZSD.mat <- do.call(rbind, lapply(results_cp, `[[`, "zsds.est"))
+	fit.mat <- do.call(rbind, lapply(results_cp, `[[`, "fit"))
+
 
 	# CIs by component
-	CI.W   <- apply(W.mat,   2, quantile, probs = c(CI.ALPHA/2, 1 - CI.ALPHA/2), na.rm = TRUE)
+	CI.w.all <- apply(w.all.mat,   2, quantile, probs = c(CI.ALPHA/2, 1 - CI.ALPHA/2), na.rm = TRUE)
 	CI.NCP <- apply(NCP.mat, 2, quantile, probs = c(CI.ALPHA/2, 1 - CI.ALPHA/2), na.rm = TRUE)
 	CI.ZSD <- apply(ZSD.mat, 2, quantile, probs = c(CI.ALPHA/2, 1 - CI.ALPHA/2), na.rm = TRUE)
+	CI.fit <- apply(fit.mat, 2, quantile, probs = c(CI.ALPHA/2, 1 - CI.ALPHA/2), na.rm = TRUE)
 
 	# assemble the parameter CI block in the order you want
-	CIs <- rbind(CIs, t(CI.NCP), t(CI.ZSD), t(CI.W))
+	CIs <- rbind(CIs, t(CI.NCP), t(CI.ZSD), t(CI.w.all), t(CI.fit))
 
 	CIs
 
 	rownames(CIs) <- c(
-      "ERR","EDR","FDR",
+      "EDR","ERR","FDR",
 	  rep("NCP", ncol(NCP.mat)),
 	  rep("ZSD", ncol(ZSD.mat)),
-	  rep("WALL", ncol(W.mat))
+	  rep("WALL", ncol(w.all.mat)),
+	  "fit"	
 	)
 
 
@@ -563,7 +643,7 @@ EXT.boot = function(ZSDS.FIXED = TRUE)	{
 #####################################
 #####################################
 
-get.ci.info = function(Est.Method = "EM",point.est) {
+get.ci.info = function(Est.Method = "EM") {
 
 #val.input = abs(c(rnorm(1000,1.1),rnorm(1000,2.8)))
 #boot.iter = 0
@@ -574,56 +654,85 @@ if (Est.Method %in% c("OF","EM")) {
 zres = run.zcurve(val.input, Est.Method=Est.Method, alpha = alpha,boot.iter = boot.iter,
 	Int.Beg = Int.Beg, Int.End = Int.End,parallel=parallel)
 
-
+ODR = ODR.res
 ERR = summary(zres)$coefficients[1,];ERR
 EDR = summary(zres)$coefficients[2,];EDR
 FDR = (1/EDR - 1)*(alpha/(1-alpha));FDR
 FDR = FDR[c(1,3,2)];FDR
 
-w.inp = summary(zres, type="parameters")$coefficients[,2]
-w.inp.low = summary(zres, type="parameters")$coefficients[,3]
-w.inp.high = summary(zres, type="parameters")$coefficients[,4]
+# bootstrap selected weights (B x 7)
+Wboot <- zres$boot$weights
 
-round(cbind(w.inp,w.inp.low,w.inp.high),3)
+pow_sel <- function(ncp, Int.Beg) {
+  pnorm(ncp, mean = Int.Beg) + pnorm(-ncp, mean = Int.Beg)  # Φ(ncp-c)+Φ(-ncp-c)
+}
 
-pow.sel = pnorm(ncp,Int.Beg) + pnorm(-ncp,Int.Beg);pow.sel
+w_all_from_w_inp <- function(w_inp, ncp, Int.Beg) {
+  ps <- pow_sel(ncp, Int.Beg)
+  x  <- w_inp / ps
+  x / sum(x)
+}
 
-sum(w.all)
-w.all = w.inp/(pow.sel)
-w.all = w.all/sum(w.all)
-round(w.all,3)
+# bootstrap distribution of w.all
+w_all_boot <- t(apply(Wboot, 1, function(wrow) {
+  w_all_from_w_inp(wrow, ncp, Int.Beg)
+}))
 
-w.inp.low = w.inp.low/sum(w.inp.low)
-w.all.low = w.inp.low/(pow.sel)
-w.all.low = w.all.low/sum(w.all.low)
-round(w.all.low,3)
+# point estimate from the fitted selected weights (replace with your object’s slot)
+w_inp_hat <- zres$fit$weights
+w_all_hat <- w_all_from_w_inp(w_inp_hat, ncp, Int.Beg)
 
-w.inp.high = w.inp.high/sum(w.inp.high)
-w.all.high = w.inp.high/(pow.sel)
-w.all.high = w.all.high/sum(w.all.high)
-w.all.high
+# percentile 95% CIs
+w_all_ci <- t(apply(w_all_boot, 2, quantile, probs = c(.025, .975), na.rm = TRUE))
+colnames(w_all_ci) <- c("low", "high")
+
+w.all = round(cbind(estimate = w_all_hat, w_all_ci), 3)
+w.all
 
 fit.val = summary(zres)$model$fit_index
 fit.val
 
-w.all = cbind(w.all,w.all.low,w.all.high)
+res.ci = list(
+	slope = slope,
+    ODR = ODR,
+    EDR = EDR,
+    ERR = ERR,
+    FDR = FDR,
+    ncp.est = ncp,
+    zsds.est = zsds,
+    w.all = w.all,
+	bias = bias,
+    fit = fit.val
+)
 
-res.ci = rbind(EDR,ERR,FDR,fit.val,w.all)
-print(round(res.ci,3))
+#res.ci
 
-
-} 
+}
+ 
 
 if (Est.Method == "EXT") {
 
 res.ext = EXT.boot(ZSDS.FIXED=ZSDS.FIXED)
-print(res.ext)
+res.ext
 
-res.ci = cbind(point.est,res.ext)
+w.all.with.ci = cbind(results$w.all,res.ext[6:(5+components),1],
+		res.ext[6:(5+components),2])
+w.all.with.ci
 
-#print("METHOD EXT")
-#print("RETURN res.ci")
-#print(res.ci)
+res.ci = list(
+	slope = slope,
+    ODR = ODR.res,
+    EDR = c(results$EDR,res.ext[1,]),
+    ERR = c(results$ERR,res.ext[2,]),
+    FDR = c(results$FDR,res.ext[3,]),
+    ncp.est = c(results$ncp,res.ext[4,]),
+    zsds.est = c(results$zsds,res.ext[5,]),
+    w.all = w.all.with.ci,
+	bias = bias,
+    fit = c(results$fit,res.ext[nrow(res.ext),])
+)
+
+#res.ci
 
 }
 
@@ -669,9 +778,9 @@ par(mar = old_mar)
 ###################################################
 
 Draw.Histogram = function(w,cola="blue3",
-	results,Write.CI = FALSE) {
+	Write.CI = FALSE) {
 
-	#w = w.all;cola = "blue3"; results = res.text
+	#w = w.all;cola = "blue3"; 
 
 	int.start = round(Int.Beg,1)
 	if (round(Int.Beg,2) == 1.96) int.start = 2
@@ -762,7 +871,6 @@ hist(c(0),main="",ylim=c(ymin,ymax),ylab="",xlab="",xlim=c(x.lim.min,x.lim.max),
 	########
 
 	#TESTING
-	#y.text = ymax;Write.CI = TRUE;results=res.text;Show.Text = FALSE; Draw.Histogram(w.all,results=res.text,cola=col.hist)
 
 	i = 0
 	results.x = x.lim.max 
@@ -803,32 +911,26 @@ hist(c(0),main="",ylim=c(ymin,ymax),ylab="",xlab="",xlim=c(x.lim.min,x.lim.max),
 	if (Write.CI) {
 
 
-	### results = res.text
-
-	p.bias = results[5,3]
-	if (is.na(p.bias)) TEST4BIAS = FALSE
+	if (is.na(bias[3])) TEST4BIAS = FALSE
 
 	if(TEST4BIAS) { 
-		if (p.bias < .00005) { bias.res = "EJS, p < .0001" } else {  
-			bias.res = paste0("EJS, p = ",sub("^0","",formatC(p.bias,format="f",digits=4))) }
+		if (bias[3] < .00005) { bias.res = "EJS, p < .0001" } else {  
+			bias.res = paste0("EJS, p = ",sub("^0","",formatC(bias[3],format="f",digits=4))) }
 		bias.res
 	}	
 
-	results = round(results,2)
-	results = round(results*100);results
-
-	ODR = results[1,1]
-	ODR.low = results[1,2]
-	ODR.high = results[1,3]
-	EDR = results[2,1]
-	EDR.low = results[2,2]
-	EDR.high = results[2,3]
-	ERR = results[3.1]
-	ERR.low = results[3,2]
-	ERR.high = results[3,3]
-	FDR = results[4.1]
-	FDR.low = results[4,2]
-	FDR.high = results[4,3]
+	ODR = results$ODR[1]*100
+	ODR.low = results$ODR[2]*100
+	ODR.high = results$ODR[3]*100
+	EDR = results$EDR[1]*100
+	EDR.low = results$EDR[2]*100
+	EDR.high = results$EDR[3]*100
+	ERR = results$ERR[1]*100
+	ERR.low = results$ERR[2]*100
+	ERR.high = results$ERR[3]*100
+	FDR = results$FDR[1]*100
+	FDR.low = results$FDR[2]*100
+	FDR.high = results$FDR[3]*100
 
 	if (ODR.high > 100) ODR.high = 100
 	#print("Check ERR.low")
@@ -881,7 +983,7 @@ hist(c(0),main="",ylim=c(ymin,ymax),ylab="",xlab="",xlim=c(x.lim.min,x.lim.max),
 
 	if(TEST4BIAS) {
 		i = i + 10
-		text(results.x,y.text-y.line*i,bias.res,
+		text(results.x,y.text-y.line*i,results$bias[3],
 			pos=2,cex=letter.size.1)
 		}
 
@@ -890,20 +992,17 @@ hist(c(0),main="",ylim=c(ymin,ymax),ylab="",xlab="",xlim=c(x.lim.min,x.lim.max),
 	} else {  
 	# End of IF CI show results without CI
 
-	p.bias = results[5]
+	
+	ODR = results$ODR[1]*100;ODR
+	EDR = results$EDR[1]*100;ERR
+	ERR = results$ERR[1]*100;EDR
+	FDR = results$FDR[1]*100;FDR
 
-	results = round(results*100);results
-
-	ODR = results[1];ODR
-	EDR = results[2];ERR
-	ERR = results[3];EDR
-	FDR = results[4];FDR
-
-	if (is.na(p.bias)) TEST4BIAS = FALSE
+	if (is.na(results$bias[3])) TEST4BIAS = FALSE
 
 	if(TEST4BIAS) { 
-		if (p.bias < .00005) { bias.res = "EJS, p < .0001" } else { 
-			bias.res = paste0("EJS, p = ",sub("^0","",formatC(p.bias,format="f",digits=4))) }
+		if (results$bias[3] < .00005) { bias.res = "EJS, p < .0001" } else { 
+			bias.res = paste0("EJS, p = ",sub("^0","",formatC(bias[3],format="f",digits=4))) }
 		bias.res
 	}	
 
@@ -934,7 +1033,7 @@ hist(c(0),main="",ylim=c(ymin,ymax),ylab="",xlab="",xlim=c(x.lim.min,x.lim.max),
 		paste("FDR:",FDR.string,"%"),
 		pos=2,cex=letter.size.1) 
 
-	if (is.na(p.bias)) TEST4BIAS = FALSE
+	if (is.na(bias[3])) TEST4BIAS = FALSE
 
 	if(TEST4BIAS) {
 		i = i + 2
@@ -1153,8 +1252,6 @@ Draw.Curve.All.SDG1 = function(w.inp,ncp=ncp,zsds=zsds,cola=col.curve,
 
 #x.start = x.lim.min; x.end = x.lim.max;Ltype = 3;Lwidth = 4;cola = col.hist
 
-#Draw.Histogram(w.all,results=res.text,cola=col.hist)
-
 components = length(ncp)
 
 if (components == 1) { 
@@ -1241,44 +1338,16 @@ if (Show.Significance) {
 ### Get Densities
 ##############################################
 
-Get.Densities = function(zval,bw="nrd0",d.x.min=0,d.x.max=6,Augment=TRUE) {
-
-#bw = bw.est; zval = val.input[val.input > Int.Beg];d.x.max = 6;d.x.min = Int.Beg
-#hist(zval)
-#summary(zval)
+Get.Densities = function(INT,bw="nrd0",d.x.min=0,d.x.max=6,Augment=TRUE) {
 
 ### find the maximum z-score. This is only needed if the maximum z-score is below Int.End
 max.z = Int.End
-if (max(zval) < d.x.max) max.z = max(zval)
+if (max(INT) < d.x.max) max.z = max(INT)
 max.z
 
-#max.z = 6
-
-z.check = length(val.input[val.input > round(Int.Beg,1)  
-	& val.input < round(Int.Beg,1) + 1.5 + 4*bw.est])
-z.check
-
-if(Augment.Regression & z.check > 20) { 
-
-Z.Density = bkde(val.input[val.input > round(Int.Beg,1)  
-	& val.input < round(Int.Beg,1) + 2 + 4*bw.est],bandwidth=bw.est,
-	range=c(Int.Beg,Int.Beg+2))
-D = data.frame(Z.Density$x,Z.Density$y)
-dim(D)
-colnames(D) = c("ZX","ZY")
-bw.reg = 1.5
-D = D[D$ZX > Int.Beg & D$ZX < Int.Beg + bw.reg,]
-dim(D)
-summary(D$ZX)
-
-#plot(D$ZX,D$ZY)
-
-d.reg = -lm(scale(D$ZY) ~ scale(D$ZX))$coefficients[2];d.reg
-
-if (Int.Beg > 1) Augment.Factor = 1 + d.reg;Augment.Factor
-
+if(Augment.Regression & slope[1] > 20 & Int.Beg > 1) { 
+	Augment.Factor = 1 - d.reg;Augment.Factor
 } 
-
 
 ### Augment z-scores on the left side of Interval to avoid downward trend 
 ### of kernal density function (assumes values go to 0)
@@ -1286,18 +1355,14 @@ if (Int.Beg > 1) Augment.Factor = 1 + d.reg;Augment.Factor
 if (Augment == TRUE) { 
 
 	AUG = c()
-	n.AUG = round(Augment.Factor*length(zval[zval > d.x.min & zval < d.x.min+bw.aug]));n.AUG
+	n.AUG = round(Augment.Factor*length(INT[INT > d.x.min & INT < d.x.min+bw.aug]));n.AUG
 	if (n.AUG > 0) AUG = seq(d.x.min-bw.aug,d.x.min,bw.aug/n.AUG)
 
-	summary(zval)
-	Z.INT.USE = c(zval,AUG)
-	#hist(zval[zval & 1.9 & zval < 6],breaks=seq(1.9,6.1,.1),freq=FALSE)
-	#hist(Z.INT.USE[Z.INT.USE < 6],breaks=seq(1.9,6,.1),freq=FALSE)
-	#summary(AUG)
+	Z.INT.USE = c(INT,AUG)
 
 } else {
 	#print("Not Augmenting")
-	Z.INT.USE = zval[zval > d.x.min & zval <= max.z]
+	Z.INT.USE = INT[INT > d.x.min & INT <= max.z]
 }
 
 #print(summary(Z.INT.USE))
@@ -1481,18 +1546,11 @@ return(res)
 
 
 
-
-
-
-
 ################################################################
 ### USE EXTENDED CURVE (Est.Method = "EXT"  (slower than OF)
 ################################################################
 
-extended.curve = function(vals,ncp=ncp,zsds=zsds) {
-
-#w.inp = 1;ncp = 4;zsds = 2;
-#weights = 1;means = 0;sds = 1;
+extended.curve = function(vals,startval=NULL,ncp=ncp,zsds=zsds) {
 
 ### this is the actual fitting function
 extended.curve.fitting = function(para,RetEst=FALSE,Fixed.Null=FALSE)    {
@@ -1577,17 +1635,15 @@ return(value)
 
 } 
 
-####
+#vals = val.sample
+densy = Get.Densities(vals,bw=bw.est,d.x.min=Int.Beg,d.x.max=Int.End,Augment=Augment)
 
 components = length(ncp);components
-
-#print(Augment)
-densy = Get.Densities(vals,bw=bw.est,d.x.min=Int.Beg,d.x.max=Int.End,Augment=Augment)
 
 D.X = densy[,1]
 O.D.Y = densy[,2]
 
-#plot(D.X,D.Y)
+#plot(D.X,O.D.Y)
 
 n.bars = length(D.X)
 n.bars
@@ -1595,33 +1651,44 @@ n.bars
 bar.width = D.X[2] - D.X[1]
 bar.width
 
+#startval = NULL
+
+if (is.null(startval)) {
 
 if (W.FIXED) {
 	startval = w.fix
+} else {
+	startval = rep(1/components, components)
+}
+
+startval = c(startval,ncp)
+
+startval = c(startval,zsds)
+
+} # End of startval
+
+###
+
+if (W.FIXED) {
 	lowlim = w.fix
 	highlim = w.fix
 } else {
-	startval = rep(1/components,components)
 	lowlim = rep(0,components)
 	highlim = rep(1,components)
 }
 
 if (NCP.FIXED) {
-	startval = c(startval,ncp)
 	lowlim = c(lowlim,ncp)
 	highlim = c(highlim,ncp)
 } else {
-	startval = c(startval,ncp)
 	lowlim = c(lowlim,rep(0,components))
 	highlim = c(highlim,rep(Int.End,components))
 }
 
 if (ZSDS.FIXED) { 
-	startval = c(startval,zsds)
 	lowlim = c(lowlim,zsds)
 	highlim = c(highlim,zsds)
 } else {
-	startval = c(startval,zsds)
 	lowlim = c(lowlim,rep(1,components))
 	highlim = c(highlim,zsds)
 }
@@ -1636,15 +1703,24 @@ if (TESTING == TRUE) Plot.Fitting = TRUE
 auto = nlminb(startval,extended.curve.fitting,lower=lowlim,upper=highlim,control=list(eval.max=1000))
 
 para = auto$par
-para[1:components] = para[1:components]/sum(para[1:components])
-para
 
-fit = auto$objective;fit
+w.inp = para[1:components]
+w.inp = w.inp / sum(w.inp)
+ncp.est = para[(components+1):(2*components)]
+zsds.est = para[(components*2+1):(3*components)]
 
-res = c(para,fit)
+fit = auto$objective
+
+res = list(
+    ncp.est = ncp.est,
+	zsds.est = zsds.est,
+	w.inp = w.inp,
+    fit = fit
+)
+
 res
 
-return(c(res))
+return(res)
 
 } 
 
@@ -1662,12 +1738,9 @@ return(c(res))
 ### This Function Computes Power from Weights and Non-Centrality Parameters
 #########################################################################
 
-Compute.Power.Z = function(para,Int.Beg=crit,BOOT=FALSE) {
+Compute.Power.Z = function(cp.input,Int.Beg=crit,BOOT=FALSE) {
 
 crit = qnorm(alpha/2,lower.tail=FALSE)
-
-#para = para.est.OF
-#para = res.1$w.all
 
 ext.all = length(val.input[val.input > Int.End]) / 
 	length(val.input)
@@ -1681,16 +1754,9 @@ ext.inp = length(val.input[val.input > Int.End]) /
 	length(val.input[val.input > Int.Beg])
 ext.inp
 
-
-### the input weights based on z.curve method
-### these are the weights based on the Int.Beg value
-### Int.Beg could be 1.96 (all significant)
-### but it can also be other values
-### Therefore the weights cannot be directly used
-### to estimate power/replicability
-w.inp = para[1:components]
-ncp = para[(1+components):(2*components)]
-zsds = para[(1+2*components):(3*components)]
+w.inp = cp.input$w.inp
+est.ncp = cp.input$ncp.est
+est.zsds = cp.input$zsds.est
 
 ### get power values for the components (ncp)
 pow.dir = pnorm(abs(ncp),crit);pow.dir 
@@ -1701,10 +1767,6 @@ sign.error = 1-pnorm(ncp,-crit);round(sign.error,3)
 pow = pow.dir + sign.error
 pow.ext = c(pow,1)
 
-### this gives the power with the Int.Beg selection criterion as alpha 
-### this power is used as a weight to get the weights for the full distribution
-### using Jerry's insight that weight before selection is weight after selection divided by power
-### get power values for the components (ncp)
 pow.sel = pnorm(ncp,Int.Beg) + pnorm(-ncp,Int.Beg);pow.sel
 pow.sel.ext = c(pow.sel,1)
 
@@ -1916,12 +1978,7 @@ return(res)
 
 ###############################################################
 
-Compute.Power.SDG1 = function(para,BOOT=FALSE,Int.Beg=1.96) {
-
-
-  if (is.list(para)) {
-    para <- c(para$w, para$ncp, para$zsds)
-  }
+Compute.Power.SDG1 = function(cp.input,Int.Beg=1.96) {
 
 
 ext.all = length(val.input[val.input > Int.End]) / 
@@ -1937,21 +1994,17 @@ ext.inp = length(val.input[val.input > Int.End]) /
 ext.inp
 
 
-#para = para.est.EXT
-#para = c(w.inp,ncp,zsds)
-
 components = length(ncp)
 
-w.inp = para[1:components];w.inp
+w.inp = cp.input$w.inp
 if (components == 1) w.all = w.inp
 if (Int.Beg == 0) w.all = w.inp;w.all
 est.cw.all = w.all
 
-est.ncp = para[(1+components):(2*components)];est.ncp
-est.zsds = para[(1+2*components):(3*components)];est.zsds
+est.ncp = cp.input$ncp.est
+est.zsds = cp.input$zsds.est
 est.zsds[est.zsds < 1] = 1  
 est.tau = sqrt(est.zsds^2 - 1);est.tau
-est.components = length(est.ncp)
 
 ###
 
@@ -1963,7 +2016,7 @@ pow.zx = pow.zx.dir + pow.zx.sign.error
 
 i = 1
 est.wd.all = c()
-for (i in 1:est.components) {
+for (i in 1:components) {
 	if (est.tau[i] < .01) {
 		wd = rep(0,length(zx))
 		wd[which(round(zx,2) == round(est.ncp[i],2))] = 1
@@ -2028,7 +2081,7 @@ ncp.grid <- seq(0, Int.End, by = bar.width)
 
 # build density over TRUE ncp (sampling variance removed): mixture of normals on ncp axis
 dd <- 0
-for (k in 1:est.components) {
+for (k in 1:components) {
   if (est.tau[k] < 0.1) {
     # nearly discrete component
     dd_k <- rep(0, length(ncp.grid))
@@ -2154,6 +2207,10 @@ names(extreme) = c("Ext.Neg","Ext.Pos")
 (extreme*100)
 
 
+slope = slope_adj(val.input)
+slope
+
+
 ### End of Preparation
 ###############################################
 ###############################################
@@ -2171,12 +2228,17 @@ para.est.OF = old.fashioned(val.input)
 
 fit = para.est.OF[components+1];fit
 
-para.est.OF = c(para.est.OF[1:components],ncp,zsds)
+cp.input  = list(
+	w.inp = para.est.OF[1:components],
+	ncp.est = ncp,
+	zsds.est = zsds
+)
+
 
 if (CURVE.TYPE == "z") {
-  cp.res = Compute.Power.Z(para.est.OF,Int.Beg=Int.Beg)
+  cp.res = Compute.Power.Z(cp.input,Int.Beg=Int.Beg)
 } else {
-  cp.res = Compute.Power.T(para.est.OF,Int.Beg=Int.Beg)
+  cp.res = Compute.Power.T(cp.input,Int.Beg=Int.Beg)
 }
 round(cp.res,3)
 
@@ -2204,34 +2266,31 @@ if (Est.Method == "EXT") {
 
 	components = length(ncp)
 
-	para.est.EXT = extended.curve(val.input,ncp,zsds);para.est.EXT
-	fit = para.est.EXT[(3*components+1)];fit
+	INT = val.input[val.input >= Int.Beg & val.input <= Int.End]
+	startval = NULL
 
-	para.est.EXT = para.est.EXT[1:(3*components)]
-	para.est.EXT
+	para.est.EXT = extended.curve(INT,startval,ncp,zsds);para.est.EXT
 
-	w.inp = para.est.EXT[1:components];w.inp
-	sum(w.inp)
-	round(w.inp,3)
+	fit = para.est.EXT$fit
 
-	if (W.FIXED) w.inp = w.fix
+	cp.input = list(
+		w.inp = para.est.EXT$w.inp,
+		ncp.est = para.est.EXT$ncp.est,
+		zsds.est = para.est.EXT$zsds.est
+	)
 
-	ncp.est = para.est.EXT[(components+1):(2*components)]
-	ncp.est
+	startval = c(cp.input$w.inp,cp.input$ncp.est,cp.input$zsds.est)
+	startval
 
-	zsds.est = para.est.EXT[(2*components+1):(3*components)]
-	zsds.est
-
-	if (max(zsds.est) < 1.05) {
-		print("SD==1")
+	if (max(cp.input$zsds.est) < 1.05) {
 		if (CURVE.TYPE == "z") {
-			cp.res = Compute.Power.Z(para.est.EXT,Int.Beg=Int.Beg)
+			cp.res = Compute.Power.Z(cp.input,Int.Beg=Int.Beg)
 		} else {
-			cp.res = Compute.Power.T(para.est.EXT,Int.Beg=Int.Beg)
+			cp.res = Compute.Power.T(cp.input,Int.Beg=Int.Beg)
 		}
 	} else {
 		print("SD > 1")
-		cp.res = Compute.Power.SDG1(para.est.EXT,Int.Beg=Int.Beg)
+		cp.res = Compute.Power.SDG1(cp.input,Int.Beg=Int.Beg)
 	}			
 
 	round(cp.res,3)	
@@ -2261,7 +2320,7 @@ if (Est.Method == "EXT") {
  
 ### if requested, run slower EM
 ### Est.Method = "EM"
-if(Est.Method == "EM" & boot.iter == 0) {
+if(Est.Method == "EM"& boot.iter == 0) {
 
 	components = length(ncp)	
 	#summary(val.input)
@@ -2366,27 +2425,11 @@ FDR = round((1/EDR - 1)*(alpha/(1-alpha)),2);
 names(FDR) = "FDR"
 FDR
 
-res = c(ODR,EDR,ERR,FDR,fit)
-names(res) = c("ODR","EDR","ERR","FDR","FIT")
-
-#print("Check res")
-#print(res)
-
-#print("Finished Computations")
-#res is needed for text in plot
-
-p.bias = c(NA,NA,NA)
+bias = c(NA,NA,NA)
 if(TEST4BIAS) { 
-	p.bias = test.bias(w.all) 
+	bias = test.bias(w.all) 
 }
-names(p.bias) = c("OBS.JS","EXP.JS","EJS.p")
-#print("bias test")
-#print(p.bias)
-
-res.text = c(res[1:4],p.bias[3])
-
-#print("RESULTS")
-#print(res.text)
+names(bias) = c("OBS.JS","EXP.JS","EJS.p")
 
 ### END OF ADD RESULTS
 
@@ -2436,6 +2479,23 @@ if (Est.Method %in% c("CLU", "CLU-W","CLU-B") & boot.iter >= 0) {
 
 ########################################################## 
 
+results = list(
+	slope = slope,
+    ODR = ODR,
+	EDR = EDR,
+	ERR = ERR,
+	FDR = FDR,
+    ncp = cp.input$ncp.est,
+    zsds = cp.input$zsds.est,
+    w.all = w.all,
+    bias = bias,
+    fit = fit
+  )
+
+
+#results
+
+
 
 ##########################################
 ### This Code is Used to Create Graphic
@@ -2443,10 +2503,7 @@ if (Est.Method %in% c("CLU", "CLU-W","CLU-B") & boot.iter >= 0) {
 
 if (Show.Histogram & sum(extreme,na.rm=TRUE) < .95) { 
 
-	print("SHOW RESULTS")
-	print(res.text)
-
-	Draw.Histogram(w.all,results=res.text,cola=col.hist)
+	Draw.Histogram(w.all,cola=col.hist)
 
 	if (Show.KD) Draw.KD(val.input,w.all,cola=col.kd)
 
@@ -2484,86 +2541,18 @@ if (TEST4HETEROGENEITY > 0) {
 
 
 
-print(round(res,3))
-
-return.results = list(
-    res = res,
-    ncp = ncp.est,
-    zsds = zsds.est,
-    w.all = w.all,
-    bias = p.bias,
-    fit.comp = res.het
-  )
-
-
-#return.results
-
+########################################################################
 ### code for confidence intervals 
-
-########################################################################
-########################################################################
 ########################################################################
 
 ### If Confidence Intervals are requested, compute CI (boot.iter > 0)
 if (boot.iter > 0 & Est.Method %in% c("OF","EM","EXT") )  {
 
-	#boot.iter = 100
+	#boot.iter = 50
 
-    print("Start of CI")
-	print(return.results)
+	res.with.ci = get.ci.info(Est.Method = Est.Method)
 
-     point.est = c(return.results$res[c(3,2,4)],return.results$ncp,return.results$zsds,return.results$w.all)
-
-	#res.with.ci = CIs
-	res.with.ci = get.ci.info(Est.Method = Est.Method,point.est)
-	res.with.ci
-
-	res.with.ci = rbind(ODR.res,res.with.ci,p.bias)
-
-	res.with.ci = data.frame(res.with.ci)
-	rownames(res.with.ci)[5:7] = c("NCP","ZSDS","W.ALL")
-
-	round(res.with.ci,3)
-
-	print(res.with.ci)
-
-	res.text = rbind(res.with.ci[1:4,],p.bias)
-	rownames(res.text) = c("ODR","ERR","EDR","FDR","bias")
-	round(res.text,3)
-
-	res = res.with.ci
-	round(res,3)	 
-
-}
-
-
-#boot.iter = 50	# Testing
-if (boot.iter > 0 & Est.Method == "EXTold") {
-
-	res.ci = get.ci.info(Est.Method = Est.Method)
-	res.ci = rbind(c(ODR.low,ODR.high),res.ci)
-	rownames(res.ci)[1] = "ODR"
-	round(res.ci,3)
-	dim(res.ci)
-
-	FDR = round((1/EDR - 1)*(alpha/(1-alpha)),2);
-	names(FDR) = "FDR"
-	FDR
-
-	res.text = res[1:4]
-	names(res.text) = c("ODR","ERR","EDR","FDR")
-
-	res.text = cbind(res.text,res.ci[1:4,])
-	res.text = round(res.text,3)
-
-	res.text = rbind(res.text,c(p.bias))
-	rownames(res.text)[5] = "BIAS"
-	round(res.text,3)
-	
-	res = res.text
-	res
-
-	res.zsds = c(zsds,res.ci[which(rownames(res.ci) == "ZSD"),])
+	results = res.with.ci
 
 }
 
@@ -2576,22 +2565,11 @@ if (boot.iter > 0 & substring(Est.Method,1,3) == "CLU") {
 	rownames(results) = c("ODR","EDR","ERR","FDR")
 	round(results,3)
 
-	res.text = rbind(results,c(p.bias))
-	res.text = round(res.text,3)
-
-	rownames(res.text)[5] = "BIAS"
-
-
-	#print(round(res.text,3))
-
-	res = res.text
-	res
-
 }
 
 if (boot.iter > 0 & Show.Histogram) {
 
-	Draw.Histogram(w.all,results=res.text,cola=col.hist,Write.CI = TRUE)
+	Draw.Histogram(w.all,cola=col.hist,Write.CI = TRUE)
 
 	if (Show.KD) Draw.KD(val.input,w.all,cola=col.kd)
 
@@ -2619,23 +2597,8 @@ if (boot.iter > 0 & Show.Histogram) {
 } # End of Show.Histogram	for bootstrap
 
 
-if (boot.iter > 0) {
+return(results)
 
-return.results = list(
-    res = res.text[1:4,],
-    ncp = res.with.ci[5,],
-    zsds = res.with.ci[6,],
-    w.all = res.with.ci[7,],
-    bias = p.bias,
-    fit.comp = res.het
-  )
-
-}
-
-#return.results
-
-
-return(return.results)
 
 } #End of Zing
 
