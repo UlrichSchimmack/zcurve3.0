@@ -1,10 +1,9 @@
 
-
 ########################################################################
 ### SETTING PARAMETERS FOR Z-CURVE MODEL
 ########################################################################
 
-version <- "Version 2026.02.15"   # Version label to appear on plots
+version <- "Version 2026.02.20"   # Version label to appear on plots
 
 # Optional cleanup 
 # rm(list = ls())
@@ -241,31 +240,65 @@ round_list <- function(x, digits = 3) {
 
 
 
+########################################################
+######## NEW EM ALGORITHM
 
-update_ncp_newton <- function(mu_init, sigma, n_k, S1_k, c,
-                              max_iter = 20, tol = 1e-8,
-                              lower = -10, upper = 10) {
+update_ncp_newton_folded <- function(
+  mu_init,
+  sigma,
+  n_k,
+  S1_k,
+  Int.Beg,
+  Int.End,
+  max_iter = 20,
+  tol = 1e-8,
+  lower = -10,
+  upper = 10
+) {
 
   mu <- mu_init
 
   for (iter in 1:max_iter) {
 
-    a <- (c - mu) / sigma
-    denom <- 1 - pnorm(a)
-    lambda <- dnorm(a) / denom
+    # truncation limits
+    a1 <- (Int.Beg - mu) / sigma
+    b1 <- (Int.End - mu) / sigma
+    a2 <- (-Int.End - mu) / sigma
+    b2 <- (-Int.Beg - mu) / sigma
+
+    Phi_a1 <- pnorm(a1)
+    Phi_b1 <- pnorm(b1)
+    Phi_a2 <- pnorm(a2)
+    Phi_b2 <- pnorm(b2)
+
+    Cmu <- (Phi_b1 - Phi_a1) +
+           (Phi_b2 - Phi_a2)
+
+    if (Cmu <= 0 || !is.finite(Cmu))
+      return(mu)   # fail safely
+
+    phi_a1 <- dnorm(a1)
+    phi_b1 <- dnorm(b1)
+    phi_a2 <- dnorm(a2)
+    phi_b2 <- dnorm(b2)
+
+    delta <- (phi_a1 - phi_b1 +
+              phi_a2 - phi_b2) / Cmu
+
+    kappa <- (a1 * phi_a1 - b1 * phi_b1 +
+              a2 * phi_a2 - b2 * phi_b2) / Cmu
 
     # score
     U <- (S1_k - n_k * mu) / sigma^2 -
-         n_k * lambda / sigma
+         n_k * delta / sigma
 
     # hessian
     H <- - n_k / sigma^2 -
-         n_k / sigma^2 * lambda * (lambda - a)
+         n_k / sigma^2 * (delta^2 + kappa)
 
     step <- U / H
     mu_new <- mu - step
 
-    # clamp to bounds
     mu_new <- max(lower, min(upper, mu_new))
 
     if (abs(mu_new - mu) < tol)
@@ -278,21 +311,80 @@ update_ncp_newton <- function(mu_init, sigma, n_k, S1_k, c,
 }
 
 
-n_k  <- colSums(tau)
-S1_k <- colSums(tau * z)
-S2_k <- colSums(tau * z^2)
+update_zsds_newton_folded <- function(
+  sigma_init,
+  mu,
+  n_k,
+  S1_k,
+  S2_k,
+  Int.Beg,
+  Int.End,
+  max_iter = 20,
+  tol = 1e-8
+) {
 
-if (!NCP.FIXED)
-  ncp[k] <- update_ncp_newton(ncp[k], zsds[k],
-                               n_k[k], S1_k[k], c)
+  eta <- log(sigma_init)
 
-if (!ZSDS.FIXED)
-  zsds[k] <- update_zsds_newton(zsds[k], ncp[k],
-                                n_k[k], S1_k[k], S2_k[k], c)
+  for (iter in 1:max_iter) {
 
+    sigma <- exp(eta)
 
-if (!W.FIXED)
-  w.inp <- n_k / sum(n_k)
+    a1 <- (Int.Beg - mu) / sigma
+    b1 <- (Int.End - mu) / sigma
+    a2 <- (-Int.End - mu) / sigma
+    b2 <- (-Int.Beg - mu) / sigma
+
+    Phi_a1 <- pnorm(a1)
+    Phi_b1 <- pnorm(b1)
+    Phi_a2 <- pnorm(a2)
+    Phi_b2 <- pnorm(b2)
+
+    C <- (Phi_b1 - Phi_a1) +
+         (Phi_b2 - Phi_a2)
+
+    if (C <= 0 || !is.finite(C))
+      return(sigma)
+
+    phi_a1 <- dnorm(a1)
+    phi_b1 <- dnorm(b1)
+    phi_a2 <- dnorm(a2)
+    phi_b2 <- dnorm(b2)
+
+    delta <- (phi_a1 - phi_b1 +
+              phi_a2 - phi_b2) / C
+
+    kappa <- (a1 * phi_a1 - b1 * phi_b1 +
+              a2 * phi_a2 - b2 * phi_b2) / C
+
+    Q2 <- S2_k -
+          2 * mu * S1_k +
+          n_k * mu^2
+
+    # score in sigma
+    U_sigma <- - n_k / sigma +
+               Q2 / sigma^3 -
+               n_k * ( (Int.Beg - mu)/sigma * delta +
+                       kappa ) / sigma
+
+    # convert to eta scale
+    U_eta <- U_sigma * sigma
+
+    # simple stable Hessian approximation
+    H_eta <- -2 * n_k -
+             3 * Q2 / sigma^2
+
+    step <- U_eta / H_eta
+    eta_new <- eta - step
+
+    if (abs(eta_new - eta) < tol)
+      break
+
+    eta <- eta_new
+  }
+
+  return(max(0.05, exp(eta)))
+}
+
 
 ##################################################
 
@@ -349,10 +441,16 @@ EM_EXT_FOLDED <- function(
         (pnorm(b1) - pnorm(a1)) +
         (pnorm(b2) - pnorm(a2))
 
-      if (norm_const <= 0 || !is.finite(norm_const))
-        return(NULL)
+	    print(c(mu, sigma))
+	    print(norm_const)
+
+ 	  if (norm_const <= 0 || !is.finite(norm_const)) {
+	    print("BAD NORM CONST")
+	    stop("norm_const failure")
+		}
 
       log_g[, k] <- log_fold - log(norm_const)
+
     }
 
     log_num <- sweep(log_g, 2, log(w.inp), "+")
@@ -367,16 +465,61 @@ EM_EXT_FOLDED <- function(
     # M-STEP (weights only by default)
     # ============================================================
 
-    n_k <- colSums(tau)
 
-    if (!W.FIXED) {
-      w.inp <- n_k / k.int
-      w.inp <- pmax(w.inp, 1e-12)
-      w.inp <- w.inp / sum(w.inp)
-    }
+# ============================================================
+# M-STEP
+# ============================================================
 
-    # (mu and sigma updates intentionally omitted here —
-    #  keep them fixed for stability unless needed)
+# sufficient statistics
+n_k  <- colSums(tau)
+S1_k <- colSums(tau * x)
+S2_k <- colSums(tau * x^2)
+
+# ---- update weights ----
+if (!W.FIXED) {
+  w.inp <- n_k / k.int
+  w.inp <- pmax(w.inp, 1e-12)
+  w.inp <- w.inp / sum(w.inp)
+}
+
+# ---- update ncp ----
+if (!NCP.FIXED) {
+
+  for (k in 1:components) {
+
+    if (n_k[k] < 1e-10) next  # guard zero-mass components
+
+    ncp[k] <- update_ncp_newton_folded(
+      mu_init = ncp[k],
+      sigma   = zsds[k],
+      n_k     = n_k[k],
+      S1_k    = S1_k[k],
+      Int.Beg = Int.Beg,
+      Int.End = Int.End
+    )
+  }
+}
+
+# ---- update zsds ----
+if (!ZSDS.FIXED) {
+
+  for (k in 1:components) {
+
+    if (n_k[k] < 1e-10) next
+
+    zsds[k] <- update_zsds_newton_folded(
+      sigma_init = zsds[k],
+      mu         = ncp[k],
+      n_k        = n_k[k],
+      S1_k       = S1_k[k],
+      S2_k       = S2_k[k],
+      Int.Beg    = Int.Beg,
+      Int.End    = Int.End
+    )
+  }
+}
+
+
 
     # ============================================================
     # LOG-LIKELIHOOD
@@ -388,8 +531,12 @@ EM_EXT_FOLDED <- function(
     if (!is.finite(loglik))
       return(NULL)
 
-    if (abs(loglik - loglik_old) < tol)
-      break
+
+	if (max(w.inp) > 1 - 1e-8) {
+	    if (abs(loglik - loglik_old) < tol) {
+	        break
+	    }
+	}
 
     loglik_old <- loglik
   }
@@ -403,6 +550,49 @@ EM_EXT_FOLDED <- function(
     iter         = iter
   )
 }
+
+
+
+############################# NOT FOLDED BELOW
+
+
+
+
+update_ncp_newton <- function(mu_init, sigma, n_k, S1_k, c,
+                              max_iter = 20, tol = 1e-8,
+                              lower = -10, upper = 10) {
+
+  mu <- mu_init
+
+  for (iter in 1:max_iter) {
+
+    a <- (c - mu) / sigma
+    denom <- 1 - pnorm(a)
+    lambda <- dnorm(a) / denom
+
+    # score
+    U <- (S1_k - n_k * mu) / sigma^2 -
+         n_k * lambda / sigma
+
+    # hessian
+    H <- - n_k / sigma^2 -
+         n_k / sigma^2 * lambda * (lambda - a)
+
+    step <- U / H
+    mu_new <- mu - step
+
+    # clamp to bounds
+    mu_new <- max(lower, min(upper, mu_new))
+
+    if (abs(mu_new - mu) < tol)
+      break
+
+    mu <- mu_new
+  }
+
+  return(mu)
+}
+
 
 
 
@@ -851,32 +1041,32 @@ combine_with_ci <- function(cp.res, CI.all) {
   list(
     EDR = c(
       est   = cp.res$EDR,
-      ci.lb = CI.all[paste(as.character(round(CI.ALPHA/2*100,1),"%"), "EDR"],
-      ci.ub = CI.all[paste(as.character(round(100-CI.ALPHA/2*100,1),"%"), "EDR"]
+      ci.lb = CI.all[paste0(as.character(round(CI.ALPHA/2*100,1)),"%"), "EDR"],
+      ci.ub = CI.all[paste0(as.character(round(100-CI.ALPHA/2*100,1)),"%"), "EDR"]
     ),
 
     ERR = c(
       est   = cp.res$ERR,
-      ci.lb = CI.all[paste(as.character(round(CI.ALPHA/2*100,1),"%"), "ERR"],
-      ci.ub = CI.all[paste(as.character(round(100-CI.ALPHA/2*100,1),"%"), "ERR"]
+      ci.lb = CI.all[paste0(as.character(round(CI.ALPHA/2*100,1)),"%"), "ERR"],
+      ci.ub = CI.all[paste0(as.character(round(100-CI.ALPHA/2*100,1)),"%"), "ERR"]
     ),
 
     w.sig = cbind(
       est   = cp.res$w.sig,
-      ci.lb = CI.all[paste(as.character(round(CI.ALPHA/2*100,1),"%"), grep("^w.sig", colnames(CI.all))],
-      ci.ub = CI.all[paste(as.character(round(100-CI.ALPHA/2*100,1),"%"), grep("^w.sig", colnames(CI.all))]
+      ci.lb = CI.all[paste0(as.character(round(CI.ALPHA/2*100,1)),"%"), grep("^w.sig", colnames(CI.all))],
+      ci.ub = CI.all[paste0(as.character(round(100-CI.ALPHA/2*100,1)),"%"), grep("^w.sig", colnames(CI.all))]
     ),
 
     w.all = cbind(
       est   = cp.res$w.all,
-      ci.lb = CI.all[paste(as.character(round(CI.ALPHA/2*100,1),"%"), grep("^w.all", colnames(CI.all))],
-      ci.ub = CI.all[paste(as.character(round(CI.ALPHA/2*100,1),"%"), grep("^w.all", colnames(CI.all))]
+      ci.lb = CI.all[paste0(as.character(round(CI.ALPHA/2*100,1)),"%"), grep("^w.all", colnames(CI.all))],
+      ci.ub = CI.all[paste0(as.character(round(100-CI.ALPHA/2*100,1)),"%"), grep("^w.all", colnames(CI.all))]
     ),
 
     loc.pow = cbind(
       est   = cp.res$loc.pow,
-      ci.lb = CI.all[paste(as.character(round(CI.ALPHA/2*100,1),"%"), grep("^lp\\.", colnames(CI.all))],
-      ci.ub = CI.all[paste(as.character(round(CI.ALPHA/2*100,1),"%"), grep("^lp\\.", colnames(CI.all))]
+      ci.lb = CI.all[paste0(as.character(round(CI.ALPHA/2*100,1)),"%"), grep("^lp\\.", colnames(CI.all))],
+      ci.ub = CI.all[paste0(as.character(round(100-CI.ALPHA/2*100,1)),"%"), grep("^lp\\.", colnames(CI.all))]
     )
   )
 }
@@ -893,6 +1083,8 @@ return(zcurve.res)
 
 
 ##########################################
+
+if (1 == 2) {
 
 source(zcurve3)
 
@@ -916,7 +1108,7 @@ palliation_zcurve3_default$EDR
 zcurve.res.3d$ERR
 palliation_zcurve3_default$ERR
 
-
+}
 
 
 
@@ -2891,7 +3083,6 @@ return(res)
 ### BBB ZingStart #START #Begin of Main Program 
 #####################################
 
-
 if (length(p) > 0) {
   val.input = qnorm(1-p/2)
 }
@@ -3002,15 +3193,11 @@ if (CURVE.TYPE == "z") {
 EDR = cp.res$EDR
 ERR = cp.res$ERR
 
-w.all = cp.res[which(substring(names(cp.res),1,5) == "w.all")]
-w.all
-sum(w.all)
+w.all = cp.res$w.all
 
-w.sig = cp.res[which(substring(names(cp.res),1,5) == "w.sig")]
-round(w.sig,3)
+w.sig = cp.res$w.sig
 
-loc.power = cp.res[which(substring(names(cp.res),1,2) == "lp")]
-round(loc.power,3)
+loc.power = cp.res$loc.pow
 
 #print("Finish Old Fashioned")
 
