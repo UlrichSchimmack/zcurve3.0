@@ -26,9 +26,6 @@ library(zcurve)
 library(stringr)
 library(pwr)
 
-# Optional: Setup parallel processing (currently not functional)
-# cl <- parallel::makeCluster(parallel::detectCores() - 10)
-
 
 ########################################################################
 ### GLOBAL PARAMETERS
@@ -157,6 +154,771 @@ Zing = function(val.input,df=c(),cluster.id=c(),p=c(), lp=c()) {
 ### AAA Start of Zing Code
 ##################################################################
 ##################################################################
+
+
+#####################################################################
+### Z-curve 3.0 - NEW EM Estimation for Extended (free w, ncp, zsds)
+#####################################################################
+
+
+Compute.Power.General <- function(cp.input, Int.Beg = 1.96) {
+
+  w.inp    <- cp.input$w.inp
+  ncp.est  <- cp.input$ncp.est
+  zsds.est <- cp.input$zsds.est
+
+  components <- length(ncp.est)
+
+  # --------------------------------
+  # Expected power per component
+  # --------------------------------
+
+  beta <- numeric(components)
+
+  for (k in 1:components) {
+
+    a1 <- ( Int.Beg - ncp.est[k]) / zsds.est[k]
+    a2 <- (-Int.Beg - ncp.est[k]) / zsds.est[k]
+
+    beta[k] <- (1 - pnorm(a1)) + pnorm(a2)
+  }
+
+  beta[beta < 1e-12] <- 1e-12
+
+  # --------------------------------
+  # Pre-selection weights
+  # --------------------------------
+
+  w.all <- w.inp / beta
+  w.all <- w.all / sum(w.all)
+
+  # --------------------------------
+  # Expected discovery rate
+  # --------------------------------
+
+  EDR <- sum(w.all * beta)
+
+  # --------------------------------
+  # Weights among significant studies
+  # --------------------------------
+
+  w.sig <- w.all * beta / EDR
+
+  # --------------------------------
+  # Expected replication rate
+  # --------------------------------
+
+  ERR <- sum(w.sig * beta)
+
+  # --------------------------------
+  # Local power
+  # --------------------------------
+
+  loc.pow <- beta
+  names(loc.pow) <- paste0("lp.", 1:components)
+
+  list(
+    EDR     = EDR,
+    ERR     = ERR,
+    w.sig   = w.sig,
+    w.all   = w.all,
+    loc.pow = loc.pow
+  )
+}
+
+
+
+
+round_list <- function(x, digits = 3) {
+  if (is.numeric(x)) {
+    round(x, digits)
+  } else if (is.list(x)) {
+    lapply(x, round_list, digits = digits)
+  } else {
+    x
+  }
+}
+
+
+
+
+update_ncp_newton <- function(mu_init, sigma, n_k, S1_k, c,
+                              max_iter = 20, tol = 1e-8,
+                              lower = -10, upper = 10) {
+
+  mu <- mu_init
+
+  for (iter in 1:max_iter) {
+
+    a <- (c - mu) / sigma
+    denom <- 1 - pnorm(a)
+    lambda <- dnorm(a) / denom
+
+    # score
+    U <- (S1_k - n_k * mu) / sigma^2 -
+         n_k * lambda / sigma
+
+    # hessian
+    H <- - n_k / sigma^2 -
+         n_k / sigma^2 * lambda * (lambda - a)
+
+    step <- U / H
+    mu_new <- mu - step
+
+    # clamp to bounds
+    mu_new <- max(lower, min(upper, mu_new))
+
+    if (abs(mu_new - mu) < tol)
+      break
+
+    mu <- mu_new
+  }
+
+  return(mu)
+}
+
+
+n_k  <- colSums(tau)
+S1_k <- colSums(tau * z)
+S2_k <- colSums(tau * z^2)
+
+if (!NCP.FIXED)
+  ncp[k] <- update_ncp_newton(ncp[k], zsds[k],
+                               n_k[k], S1_k[k], c)
+
+if (!ZSDS.FIXED)
+  zsds[k] <- update_zsds_newton(zsds[k], ncp[k],
+                                n_k[k], S1_k[k], S2_k[k], c)
+
+
+if (!W.FIXED)
+  w.inp <- n_k / sum(n_k)
+
+##################################################
+
+
+EM_EXT_FOLDED <- function(
+  INT,
+  ncp,
+  zsds = rep(1, length(ncp)),
+  w.inp,
+  Int.Beg = 1.96,
+  Int.End = max(INT),
+  NCP.FIXED  = TRUE,
+  ZSDS.FIXED = TRUE,
+  W.FIXED    = FALSE,
+  max_iter = 200,
+  tol = 1e-6
+) {
+
+  x <- INT
+  x <- x[!is.na(x)]
+  k.int <- length(x)
+  components <- length(ncp)
+
+  loglik_old <- -Inf
+  loglik_trace <- numeric(max_iter)
+
+  for (iter in 1:max_iter) {
+
+    # ============================================================
+    # E-STEP
+    # ============================================================
+
+    log_g <- matrix(NA_real_, k.int, components)
+
+    for (k in 1:components) {
+
+      mu    <- ncp[k]
+      sigma <- zsds[k]
+
+      # ----- folded density -----
+      l1 <- dnorm(x,  mu, sigma, log = TRUE)
+      l2 <- dnorm(x, -mu, sigma, log = TRUE)
+
+      m  <- pmax(l1, l2)
+      log_fold <- m + log(exp(l1 - m) + exp(l2 - m))
+
+      # ----- two-sided truncation -----
+      a1 <- ( Int.Beg - mu) / sigma
+      b1 <- ( Int.End - mu) / sigma
+      a2 <- (-Int.End - mu) / sigma
+      b2 <- (-Int.Beg - mu) / sigma
+
+      norm_const <-
+        (pnorm(b1) - pnorm(a1)) +
+        (pnorm(b2) - pnorm(a2))
+
+      if (norm_const <= 0 || !is.finite(norm_const))
+        return(NULL)
+
+      log_g[, k] <- log_fold - log(norm_const)
+    }
+
+    log_num <- sweep(log_g, 2, log(w.inp), "+")
+    log_denom <- apply(log_num, 1, function(v) {
+      m <- max(v)
+      m + log(sum(exp(v - m)))
+    })
+
+    tau <- exp(log_num - log_denom)
+
+    # ============================================================
+    # M-STEP (weights only by default)
+    # ============================================================
+
+    n_k <- colSums(tau)
+
+    if (!W.FIXED) {
+      w.inp <- n_k / k.int
+      w.inp <- pmax(w.inp, 1e-12)
+      w.inp <- w.inp / sum(w.inp)
+    }
+
+    # (mu and sigma updates intentionally omitted here —
+    #  keep them fixed for stability unless needed)
+
+    # ============================================================
+    # LOG-LIKELIHOOD
+    # ============================================================
+
+    loglik <- sum(log_denom)
+    loglik_trace[iter] <- loglik
+
+    if (!is.finite(loglik))
+      return(NULL)
+
+    if (abs(loglik - loglik_old) < tol)
+      break
+
+    loglik_old <- loglik
+  }
+
+  list(
+    w.inp.est    = w.inp,
+    ncp.est      = ncp,
+    zsds.est     = zsds,
+    loglik       = loglik,
+    loglik_trace = loglik_trace[1:iter],
+    iter         = iter
+  )
+}
+
+
+
+
+EM_EXT <- function(INT,
+                   ncp,
+                   zsds = rep(1, length(ncp)),
+                   w.inp,
+                   Int.Beg = 1.96,
+                   Int.End = 6,
+                   components = length(ncp),
+                   NCP.FIXED  = TRUE,
+                   ZSDS.FIXED = TRUE,
+                   W.FIXED    = FALSE,
+                   max_iter = 200,
+                   tol = 1e-6) {
+
+  k.int <- length(INT)
+  loglik_old <- -Inf
+  loglik_trace <- numeric(max_iter)
+
+  for (iter in 1:max_iter) {
+
+    # ============================================================
+    # E-STEP
+    # ============================================================
+
+	log_f <- {
+	  l1 <- dnorm(x, mu, sigma, log = TRUE)
+	  l2 <- dnorm(-x, mu, sigma, log = TRUE)
+	  m  <- pmax(l1, l2)
+	  m + log(exp(l1 - m) + exp(l2 - m))
+	}
+
+    log_g <- matrix(NA_real_, k.int, components)
+
+    for (k in 1:components) {
+
+		a <- (Int.Beg - ncp[k]) / zsds[k]
+		b <- (Int.End - ncp[k]) / zsds[k]
+
+		log_norm <- log(pnorm(b) - pnorm(a) )
+
+		log_g[, k] <-
+		  dnorm(INT, ncp[k], zsds[k], log = TRUE) -
+		  log_norm
+
+    }
+
+    log_num <- sweep(log_g, 2, log(w.inp), "+")
+    
+    log_denom <- apply(log_num, 1, function(x) {
+      m <- max(x)
+      m + log(sum(exp(x - m)))
+    })
+
+    tau <- exp(log_num - log_denom)
+
+    # ============================================================
+    # SUFFICIENT STATISTICS
+    # ============================================================
+
+    n_k  <- colSums(tau)
+    S1_k <- colSums(tau * INT)
+    S2_k <- colSums(tau * INT^2)
+
+    # ============================================================
+    # M-STEP
+    # ============================================================
+
+    # ---- Update weights ----
+    if (!W.FIXED) {
+      w.inp <- n_k / k.int
+    }
+
+    # ---- Update ncp ----
+    if (!NCP.FIXED) {
+
+      for (k in 1:components) {
+
+        mu <- ncp[k]
+        sigma <- zsds[k]
+
+        for (inner in 1:20) {
+
+
+		a <- (Int.Beg - mu) / sigma
+		b <- (Int.End - mu) / sigma
+
+		phi_a <- dnorm(a)
+		phi_b <- dnorm(b)
+
+		Phi_a <- pnorm(a)
+		Phi_b <- pnorm(b)
+
+		denom <- Phi_b - Phi_a
+
+		delta <- (phi_a - phi_b) / denom
+
+          # Score
+          U <- (S1_k[k] - n_k[k] * mu) / sigma^2 -
+               n_k[k] * delta / sigma
+
+
+		delta <- (phi_a - phi_b) / denom
+		kappa <- (a * phi_a - b * phi_b) / denom
+
+         # Hessian
+		H <- - n_k[k] / sigma^2 -
+		     n_k[k] / sigma^2 * (delta^2 + kappa)
+
+
+          step <- U / H
+          mu_new <- mu - step
+
+          if (abs(mu_new - mu) < 1e-8)
+            break
+
+          mu <- mu_new
+        }
+
+        ncp[k] <- mu
+      }
+    }
+
+    # ---- Update zsds ----
+    if (!ZSDS.FIXED) {
+
+      for (k in 1:components) {
+
+        mu <- ncp[k]
+        eta <- log(zsds[k])
+
+        for (inner in 1:20) {
+
+          sigma <- exp(eta)
+
+          a <- (Int.Beg - mu) / sigma
+          denom <- 1 - pnorm(a)
+          lambda <- dnorm(a) / denom
+
+          Q2 <- S2_k[k] -
+                2 * mu * S1_k[k] +
+                n_k[k] * mu^2
+
+          # Score in sigma
+          U_sigma <- - n_k[k] / sigma +
+                     Q2 / sigma^3 -
+                     n_k[k] * lambda *
+                     (Int.Beg - mu) / sigma^2
+
+          U_eta <- U_sigma * sigma
+
+          # Hessian in eta
+          H_eta <- -2 * n_k[k] -
+                   3 * Q2 / sigma^2 +
+                   n_k[k] * lambda *
+                   (Int.Beg - mu) / sigma
+
+          step <- U_eta / H_eta
+          eta_new <- eta - step
+
+          if (abs(eta_new - eta) < 1e-8)
+            break
+
+          eta <- eta_new
+        }
+
+        zsds[k] <- max(0.05, exp(eta))
+      }
+    }
+
+    # ============================================================
+    # LOG-LIKELIHOOD
+    # ============================================================
+
+    loglik <- sum(log_denom)
+
+    loglik_trace[iter] <- loglik
+
+    if (abs(loglik - loglik_old) < tol)
+      break
+
+    loglik_old <- loglik
+  }
+
+
+	if (!is.finite(loglik)) {
+	  print(iter)
+ 	 stop("loglik became non-finite")
+	}
+
+
+
+  list(
+    ncp.est      = ncp,
+    zsds.est     = zsds,
+    w.inp.est    = w.inp,
+    loglik       = loglik,
+    loglik_trace = loglik_trace,
+    iter         = iter
+   )
+
+
+}
+
+
+################################################
+
+bootstrap_one <- function(vals,
+                          ncp.start,
+                          zsds.start,
+                          Int.Beg,
+						Int.End,
+						w.start = rep(1/length(ncp.start), length(ncp.start)),
+                          NCP.FIXED,
+                          ZSDS.FIXED,
+                          W.FIXED) {
+
+  n <- length(vals)
+  boot_sample <- sample(vals, n, replace = TRUE)
+
+
+  fit <- EM_EXT_FOLDED(INT = boot_sample,
+           ncp = ncp.start,
+           zsds = zsds.start,
+           w.inp = w.start,
+           Int.Beg = Int.Beg,
+		  Int.End = Int.End,
+           NCP.FIXED = NCP.FIXED,
+           ZSDS.FIXED = ZSDS.FIXED,
+           W.FIXED = W.FIXED)
+
+  if (inherits(fit, "try-error"))
+    return(rep(NA,
+               length(ncp.start) +
+               length(ncp.start) +
+               length(zsds.start)))
+
+  c(fit$w.inp,
+    fit$ncp,
+    fit$zsds)
+}
+
+
+#####################
+
+run_bootstrap_list <- function(INT,
+                               ncp.start,
+                               zsds.start,
+                               Int.Beg,
+                               Int.End,
+                               B = 1000,
+                               NCP.FIXED = TRUE,
+                               ZSDS.FIXED = TRUE,
+                               W.FIXED = FALSE,
+                               cores = round(parallel::detectCores() * .7)) {
+
+  cl <- parallel::makeCluster(cores)
+
+  parallel::clusterExport(
+    cl,
+    varlist = c("EM_EXT_FOLDED",
+                "INT",
+                "ncp.start",
+                "zsds.start",
+                "Int.Beg",
+                "Int.End",
+                "NCP.FIXED",
+                "ZSDS.FIXED",
+                "W.FIXED"),
+    envir = environment()
+  )
+
+  parallel::clusterEvalQ(cl, library(stats))
+
+boot_res <- parallel::parLapply(cl, 1:B, function(i) {
+
+  boot_sample <- sample(INT, length(INT), replace = TRUE)
+
+  fit <- try(
+    EM_EXT_FOLDED(
+      INT = boot_sample,
+      ncp = ncp.start,
+      zsds = zsds.start,
+      w.inp = rep(1/length(ncp.start), length(ncp.start)),
+      Int.Beg = Int.Beg,
+      Int.End = Int.End,
+      NCP.FIXED = NCP.FIXED,
+      ZSDS.FIXED = ZSDS.FIXED,
+      W.FIXED = W.FIXED
+    ),
+    silent = TRUE
+  )
+
+  if (inherits(fit, "try-error"))
+    return(NULL)
+
+  list(
+    w.inp = fit$w.inp.est,
+    ncp.est   = fit$ncp.est,
+    zsds.est  = fit$zsds.est,
+    loglik = fit$loglik
+  )
+})
+
+parallel::stopCluster(cl)
+
+  # remove failed runs
+  boot_res <- boot_res[!sapply(boot_res, is.null)]
+
+  if (length(boot_res) == 0)
+    stop("All bootstrap runs failed.")
+
+  return(boot_res)
+}
+
+
+
+###
+
+run_bootstrap <- function(INT,
+                          ncp.start,
+                          zsds.start,
+                          Int.Beg,
+                          Int.End,					
+                          B = 1000,
+                          NCP.FIXED = TRUE,
+                          ZSDS.FIXED = TRUE,
+                          W.FIXED = FALSE,
+                          cores = round(detectCores() *.7) ) {
+
+  cl <- makeCluster(cores)
+
+  clusterExport(cl,
+             varlist = c("EM_EXT_FOLDED",
+                          "INT",
+                          "bootstrap_one",
+                          "ncp.start",
+                          "zsds.start",
+                          "Int.Beg",
+						"Int.End",
+                          "NCP.FIXED",
+                          "ZSDS.FIXED",
+                          "W.FIXED"),
+              envir = environment())
+
+
+
+  clusterEvalQ(cl, library(stats))
+
+  results <- parLapply(cl, 1:B, function(i) {
+    bootstrap_one(
+      vals = INT,
+      ncp.start = ncp.start,
+      zsds.start = zsds.start,
+      Int.Beg = Int.Beg, 
+      Int.End = Int.End,
+      NCP.FIXED = NCP.FIXED,
+      ZSDS.FIXED = ZSDS.FIXED,
+      W.FIXED = W.FIXED
+    )
+  })
+
+  stopCluster(cl)
+
+  boot_mat <- do.call(rbind, results)
+
+  colnames(boot_mat) <-
+    c(paste0("w", 1:length(ncp.start)),
+      paste0("ncp", 1:length(ncp.start)),
+      paste0("zsds", 1:length(zsds.start)))
+
+  boot_mat
+}
+
+
+#############
+
+run.new.zcurve = function() {
+
+
+fit <- EM_EXT_FOLDED(INT = INT,
+              ncp = ncp,
+              w.inp = rep(1/length(ncp),length(ncp)),
+              Int.Beg = Int.Beg
+		)
+fit
+
+cp.input = list(
+	w.inp = fit$w.inp.est,
+	ncp.est = fit$ncp.est,
+	zsds.est = fit$zsds.est
+)
+
+cp.input
+
+cp.res = Compute.Power.General(cp.input,Int.Beg=Int.Beg)
+
+zcurve.res = cp.res
+
+######################
+
+if (boot.iter > 0) {
+
+boot_res <- run_bootstrap_list(INT = INT,
+                          ncp.start = ncp,
+                          zsds.start = rep(1, length(ncp)),
+                          Int.Beg = Int.Beg,
+                          Int.End = Int.End,		
+                          B = boot.iter,
+                          NCP.FIXED = TRUE,
+                          ZSDS.FIXED = TRUE,
+                          W.FIXED = FALSE)
+
+
+
+boot_power <- lapply(boot_res, function(x)
+  Compute.Power.Z(x, Int.Beg = Int.Beg)
+)
+
+
+param.mat <- do.call(
+  rbind,
+  lapply(boot_power, function(x) {
+    c(
+      EDR = x$EDR,
+      ERR = x$ERR,
+      setNames(x$w.sig, paste0("w.sig", seq_along(x$w.sig))),
+      setNames(x$w.all, paste0("w.all", seq_along(x$w.all))),
+      x$loc.pow
+    )
+  })
+)
+
+CI.all <- apply(
+  param.mat,
+  2,
+  quantile,
+  probs = c(CI.ALPHA/2, 1-CI.ALPHA/2),
+  na.rm = TRUE
+)
+
+combine_with_ci <- function(cp.res, CI.all) {
+
+  list(
+    EDR = c(
+      est   = cp.res$EDR,
+      ci.lb = CI.all[paste(as.character(round(CI.ALPHA/2*100,1),"%"), "EDR"],
+      ci.ub = CI.all[paste(as.character(round(100-CI.ALPHA/2*100,1),"%"), "EDR"]
+    ),
+
+    ERR = c(
+      est   = cp.res$ERR,
+      ci.lb = CI.all[paste(as.character(round(CI.ALPHA/2*100,1),"%"), "ERR"],
+      ci.ub = CI.all[paste(as.character(round(100-CI.ALPHA/2*100,1),"%"), "ERR"]
+    ),
+
+    w.sig = cbind(
+      est   = cp.res$w.sig,
+      ci.lb = CI.all[paste(as.character(round(CI.ALPHA/2*100,1),"%"), grep("^w.sig", colnames(CI.all))],
+      ci.ub = CI.all[paste(as.character(round(100-CI.ALPHA/2*100,1),"%"), grep("^w.sig", colnames(CI.all))]
+    ),
+
+    w.all = cbind(
+      est   = cp.res$w.all,
+      ci.lb = CI.all[paste(as.character(round(CI.ALPHA/2*100,1),"%"), grep("^w.all", colnames(CI.all))],
+      ci.ub = CI.all[paste(as.character(round(CI.ALPHA/2*100,1),"%"), grep("^w.all", colnames(CI.all))]
+    ),
+
+    loc.pow = cbind(
+      est   = cp.res$loc.pow,
+      ci.lb = CI.all[paste(as.character(round(CI.ALPHA/2*100,1),"%"), grep("^lp\\.", colnames(CI.all))],
+      ci.ub = CI.all[paste(as.character(round(CI.ALPHA/2*100,1),"%"), grep("^lp\\.", colnames(CI.all))]
+    )
+  )
+}
+
+zcurve.res <- combine_with_ci(cp.res,CI.all)
+
+}
+
+return(zcurve.res)
+
+} # End of New Zcurve
+
+
+
+
+##########################################
+
+source(zcurve3)
+
+val.input = val.input[!is.na(val.input)]
+INT = val.input[val.input >= Int.Beg & val.input <= Int.End]
+summary(INT)
+
+boot.iter = 500
+
+zcurve.res = run.new.zcurve()
+
+zcurve.res.3d = round_list(zcurve.res)
+zcurve.res.3d
+
+zcurve.res.3d$w.all
+palliation_zcurve3_default$w.all
+
+zcurve.res.3d$EDR
+palliation_zcurve3_default$EDR
+
+zcurve.res.3d$ERR
+palliation_zcurve3_default$ERR
+
+
+
+
 
 ##################################################################
 
@@ -580,7 +1342,7 @@ EXT.boot = function(ZSDS.FIXED = TRUE)	{
 
 
 	boot_power <- lapply(results_cp, function(cp.input)
-  		Compute.Power.SDG1(cp.input,Int.Beg = 1.96)
+  		Compute.Power.Free(cp.input,Int.Beg = 1.96)
 	)
 
 	boot.res1 <- do.call(rbind, boot_power)
@@ -935,8 +1697,8 @@ hist(c(0),main="",ylim=c(ymin,ymax),ylab="",xlab="",xlim=c(x.lim.min,x.lim.max),
 	if (ODR.high > 100) ODR.high = 100
 	#print("Check ERR.low")
 	#print(ERR.low)
-	if(ERR.low < 2.5) ERR.low = 2.5
-	if(EDR.low < 5) EDR.low = 5
+	if(ERR.low < alpha/2) ERR.low = alpha/2
+	if(EDR.low < alpha) EDR.low = alpha
 	
 	i = i + 3
 	text(results.x,y.text-y.line*i,
@@ -1738,7 +2500,7 @@ return(res)
 ### This Function Computes Power from Weights and Non-Centrality Parameters
 #########################################################################
 
-Compute.Power.Z = function(cp.input,Int.Beg=crit,BOOT=FALSE) {
+Compute.Power.Z = function(cp.input,Int.Beg=crit) {
 
 crit = qnorm(alpha/2,lower.tail=FALSE)
 
@@ -1757,6 +2519,8 @@ ext.inp
 w.inp = cp.input$w.inp
 est.ncp = cp.input$ncp.est
 est.zsds = cp.input$zsds.est
+
+components = length(est.ncp)
 
 ### get power values for the components (ncp)
 pow.dir = pnorm(abs(ncp),crit);pow.dir 
@@ -1803,12 +2567,6 @@ ERR.neg = NA
 EDR.pos = NA
 EDR.neg = NA
 
-res.est = c(EDR,EDR.pos,EDR.neg,ERR,ERR.pos,ERR.neg)
-res.est
-res = c(res.est,w.all,w.sig)
-names(res) = c("EDR","EDR.pos","EDR.neg","ERR","ERR.pos","ERR.neg",
-paste0("w.all.",ncp[1:components]),paste0("w.sig",ncp[1:components]) )
-res
 
 ### now we compute mean power as a function of z-scores continuously
 ### this is only performed if local power is requested (int.loc > 0)
@@ -1833,12 +2591,17 @@ if (int.loc > 0) {
 
 	local.power
 	names(local.power) = paste0("lp.",1:length(local.power))
-	res = c(res,local.power)
 }
 
 
-#print("Check res local power")
-#print(length(res))
+res = list(
+   EDR = EDR,
+   ERR = ERR,
+   w.sig = w.sig,
+   w.all = w.all,
+   loc.pow = local.power
+)
+
 #print(res)
 
 ### to be past back to the main program from this function
@@ -1978,8 +2741,7 @@ return(res)
 
 ###############################################################
 
-Compute.Power.SDG1 = function(cp.input,Int.Beg=1.96) {
-
+Compute.Power.General = function(cp.input,Int.Beg=1.96) {
 
 ext.all = length(val.input[val.input > Int.End]) / 
 	length(val.input)
@@ -1994,13 +2756,9 @@ ext.inp = length(val.input[val.input > Int.End]) /
 ext.inp
 
 
-components = length(ncp)
+components = length(cp.input$ncp.est)
 
 w.inp = cp.input$w.inp
-if (components == 1) w.all = w.inp
-if (Int.Beg == 0) w.all = w.inp;w.all
-est.cw.all = w.all
-
 est.ncp = cp.input$ncp.est
 est.zsds = cp.input$zsds.est
 est.zsds[est.zsds < 1] = 1  
@@ -2019,23 +2777,21 @@ est.wd.all = c()
 for (i in 1:components) {
 	if (est.tau[i] < .01) {
 		wd = rep(0,length(zx))
-		wd[which(round(zx,2) == round(est.ncp[i],2))] = 1
+		wd[which(round(zx,2) == round(est.ncp[i],2))] = w.inp[i]
 	} else {
-		wd = dnorm(zx,est.ncp[i],est.tau[i])
+		wd = dnorm(zx,est.ncp[i],est.tau[i])*w.inp[i]
 	}
-	wd = wd/sum(wd)
-	wd = wd*est.cw.all[i]
-	sum(wd)
+	wd = wd / pow.zx
+	wd = wd / sum(wd)
 	est.wd.all = rbind(est.wd.all,wd)
 }
 
 dim(est.wd.all)
 
-est.wd.all = colSums(est.wd.all)
-est.wd.all = est.wd.all/sum(est.wd.all)
+est.wd.all = colMeans(est.wd.all)
 sum(est.wd.all)
 
-#plot(zx,est.wd.all)
+
 
 est.wd.all.ext = c(est.wd.all*(1-ext.all),ext.all)
 pow.zx.dir.ext = c(pow.zx.dir,1)
@@ -2143,6 +2899,8 @@ if (length(p) > 0) {
 if (substring(Est.Method,1,3) == "CLU") {
 	if (length(cluster.id > 0)) {
 	   clu.inp = data.frame(val.input,cluster.id)
+	   clu.inp
+	   summary(clu.inp)
 	   clu.inp = clu.inp[complete.cases(clu.inp),]
 	   z.clu.input = zcurve_data(paste("z = ", clu.inp[,1]), id = clu.inp[,2])
 	   tab = table(cluster.id);tab
@@ -2240,10 +2998,9 @@ if (CURVE.TYPE == "z") {
 } else {
   cp.res = Compute.Power.T(cp.input,Int.Beg=Int.Beg)
 }
-round(cp.res,3)
 
-EDR = cp.res[1];EDR
-ERR = cp.res[4];ERR
+EDR = cp.res$EDR
+ERR = cp.res$ERR
 
 w.all = cp.res[which(substring(names(cp.res),1,5) == "w.all")]
 w.all
@@ -2501,6 +3258,8 @@ results = list(
 ### This Code is Used to Create Graphic
 ##########################################
 
+print("Show Histogram")
+
 if (Show.Histogram & sum(extreme,na.rm=TRUE) < .95) { 
 
 	Draw.Histogram(w.all,cola=col.hist)
@@ -2549,6 +3308,7 @@ if (TEST4HETEROGENEITY > 0) {
 if (boot.iter > 0 & Est.Method %in% c("OF","EM","EXT") )  {
 
 	#boot.iter = 50
+	#Est.Method = "EM"
 
 	res.with.ci = get.ci.info(Est.Method = Est.Method)
 
@@ -2568,6 +3328,10 @@ if (boot.iter > 0 & substring(Est.Method,1,3) == "CLU") {
 }
 
 if (boot.iter > 0 & Show.Histogram) {
+
+##############################
+	print(results$EDR) 
+#################################################
 
 	Draw.Histogram(w.all,cola=col.hist,Write.CI = TRUE)
 
