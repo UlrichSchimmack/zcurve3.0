@@ -162,8 +162,18 @@ Zing = function(val.input,df=c(),cluster.id=c(),p=c(), lp=c()) {
 #####################################################################
 
 
+round_list <- function(x, digits = 3) {
+  if (is.numeric(x)) {
+    round(x, digits)
+  } else if (is.list(x)) {
+    lapply(x, round_list, digits = digits)
+  } else {
+    x
+  }
+}
+
 ##################################################
-### Bein of New Extended Zcurve
+### Begin of New Extended Zcurve
 ##################################################
 
 EM_EXT_FOLDED <- function(
@@ -625,7 +635,6 @@ boot_power <- lapply(boot_res, function(x)
   Compute.Power.Z.General(x, Int.Beg = Int.Beg)
 )
 
-
 lcbind <- function(list1, list2) {
   stopifnot(length(list1) == length(list2))
   lapply(seq_along(list1), function(i) c(list1[[i]], list2[[i]]))
@@ -647,12 +656,30 @@ lquantile <- function(boot_list, probs = c(0.025, 0.975)) {
   result
 }
 
+boot_list
 
 get.ci <- function(boot_list, probs = c(0.025, 0.975)) {
   ci <- lquantile(boot_list, probs = probs)
 }
 
 res.ci = get.ci(boot_list)
+
+} else {
+
+res.ci = list(
+ w.inp = matrix(NA,2,components), 
+ ncp = matrix(NA,2,components),
+ zsds = matrix(NA,2,components),
+ loglik = matrix(NA,2,1),
+ EDR = matrix(NA,2,1),
+ ERR = matrix(NA,2,1),
+ w.all = matrix(NA,2,components),
+ w.sig = matrix(NA,2,components),
+ loc.pow = matrix(NA,2,length(res.pe$loc.pow))
+)
+
+}
+
 
 combine.pe.ci = function(res.pe,res.ci) {
 
@@ -681,9 +708,6 @@ zcurve.res$EDR[3] = zcurve.res$EDR[3] + EDR.CI.adjust
 zcurve.res$ERR[2] = zcurve.res$ERR[2] - ERR.CI.adjust
 zcurve.res$ERR[3] = zcurve.res$ERR[3] + ERR.CI.adjust
  
-
-}
-
 zcurve.res
 
 return(zcurve.res)
@@ -701,9 +725,9 @@ if (1 == 2) {
 
 source(zcurve3)
 
-boot.iter = 500
+boot.iter = 0
 
-zcurve.res = run.new.zcurve(val.input,NCP.TRUE,ZSDS.TRUE)
+zcurve.res = run.new.zcurve(val.input,NCP.FIXED,ZSDS.FIXED)
 
 zcurve.res.3d = round_list(zcurve.res)
 zcurve.res.3d
@@ -2173,9 +2197,10 @@ if (int.loc > 0) {
   int  = seq(x.lim.min, x.lim.max, by = int.loc)
   bins = cut(X, breaks = int, include.lowest = TRUE)
 
-  local.power = as.vector(tapply(seq_along(X), bins, function(idx)) {
+  local.power = as.vector(tapply(seq_along(X), bins, function(idx) {
     sum(loc.p[idx] * wd.X[idx]) / sum(wd.X[idx])
-  })
+  }))
+  names(local.power) = paste0("lp.", midpoints)
 
   midpoints           = (int[-length(int)] + int[-1]) / 2
   names(local.power)  = paste0("lp.", midpoints)
@@ -2273,6 +2298,7 @@ if (int.loc > 0) {
   int         = seq(0, Int.End, by = int.loc)
   bins        = cut(zx, breaks = int, include.lowest = TRUE)
   local.power = as.vector(tapply(lp, bins, mean))
+  names(local.power)  = paste0("lp.", midpoints)
   midpoints   = (int[-length(int)] + int[-1]) / 2
   names(local.power) = paste0("lp.", midpoints)
 
@@ -2571,6 +2597,7 @@ if(Est.Method == "NEW") {
 	if(TEST4BIAS) { 
 		bias = test.bias(w.all) 
 	}
+
 
 	names(bias) = c("OBS.JS","EXP.JS","EJS.p")
 
