@@ -2200,7 +2200,6 @@ if (int.loc > 0) {
   local.power = as.vector(tapply(seq_along(X), bins, function(idx) {
     sum(loc.p[idx] * wd.X[idx]) / sum(wd.X[idx])
   }))
-  names(local.power) = paste0("lp.", midpoints)
 
   midpoints           = (int[-length(int)] + int[-1]) / 2
   names(local.power)  = paste0("lp.", midpoints)
@@ -2298,7 +2297,6 @@ if (int.loc > 0) {
   int         = seq(0, Int.End, by = int.loc)
   bins        = cut(zx, breaks = int, include.lowest = TRUE)
   local.power = as.vector(tapply(lp, bins, mean))
-  names(local.power)  = paste0("lp.", midpoints)
   midpoints   = (int[-length(int)] + int[-1]) / 2
   names(local.power) = paste0("lp.", midpoints)
 
@@ -2627,13 +2625,13 @@ if(Est.Method == "NEW") {
 		fit = res.new$loglik[1,1]
 	  )
 
-	results
+	results = results.new
 
 
 } 
 
 #results
-
+#results.new
 
 ####################################################################
 
@@ -2690,13 +2688,15 @@ if (Est.Method %in% c("CLU", "CLU-W","CLU-B") & boot.iter >= 0) {
 
 if (Show.Histogram & sum(extreme,na.rm=TRUE) < .95) { 
 
-	print("Show Histogram")
+	#print("Show Histogram")
 
 	Draw.Histogram(w.all,cola=col.hist)
 
 	if (Show.KD) Draw.KD(val.input,w.all,cola=col.kd)
 
-	if (Show.Curve.All & results$zsds < 1.05) {
+	zsds.check = max(results$zsds[1,])
+
+	if (Show.Curve.All & zsds.check < 1.05) {
 
 		Draw.Curve.All(w=w.all,cola=col.curve,
 			Ltype=3,Lwidth = 4,x.start=x.lim.min,x.end=x.lim.max)
@@ -2705,7 +2705,7 @@ if (Show.Histogram & sum(extreme,na.rm=TRUE) < .95) {
 
 		}
 
-	if (Show.Curve.All & max(results$zsds) > 1.05) {
+	if (Show.Curve.All & zsds.check > 1.05) {
 
 		print("Showing SDG1 PLOT")	
 
@@ -2718,18 +2718,6 @@ if (Show.Histogram & sum(extreme,na.rm=TRUE) < .95) {
 	if (length(loc.power) > 0 && !is.na(loc.power[1])) Write.Local.Power(loc.power)	
 
 	} # End of Show.Histogram
-
-
-########################################################################
-########################################################################
-########################################################################
-
-res.het = NA
-if (TEST4HETEROGENEITY > 0) {
-	boot.run = TEST4HETEROGENEITY
-	if (!is.numeric(TEST4HETEROGENEITY)) print("!!! Need to provide number of iterations!!!")
-	else res.het = run.heterogeneity.test(val.input,boot.run=boot.run,fit.ci)
-	}
 
 
 
