@@ -5,7 +5,7 @@
 ### SETTING PARAMETERS FOR Z-CURVE MODEL
 ########################################################################
 
-version <- "Version 2026.03.11"   # Version label to appear on plots
+version <- "Version 2026.03.15"   # Version label to appear on plots
 
 # Optional cleanup 
 # rm(list = ls())
