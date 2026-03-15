@@ -102,8 +102,8 @@ zsds = rep(zsd,components)          # one SD for each component
 
 just <- 0.8                         # Cutoff for "just significant" z-values (used in optional bias test)
 
-ZSDS.FIXED <- FALSE                 # Fix SD values for EXT method 
-NCP.FIXED <- FALSE                  # Fix non-central parameter(NCP) means values for EXT method
+ZSDS.FIXED <- TRUE                  # Fix SD values for EXT method 
+NCP.FIXED <- TRUE                   # Fix non-central parameter(NCP) means values for EXT method
 W.FIXED   <- FALSE                  # Fix weights for EXT method
 
 fixed.false.positives <- 0          # If > 0, constrains proportion of false positives (e.g., weight for z = 0 component)
@@ -428,7 +428,7 @@ EM_EXT_FOLDED_MULTISTART <- function(
   max_iter   = 200,
   tol        = 1e-6,
   n_starts   = 10,
-  w.start    = NULL   # optional external starting weights
+  w_start    = NULL   # optional external starting weights
 ) {
 
   components <- length(ncp)
@@ -441,9 +441,9 @@ EM_EXT_FOLDED_MULTISTART <- function(
   for (s in 1:n_starts) {
 
     # --- starting weights ---
-    if (s == 1 && !is.null(w.start)) {
+    if (s == 1 && !is.null(w_start)) {
       # use supplied weights for first start
-      w_s <- w.start
+      w_s <- w_start
       w_s <- pmax(w_s, 1e-3)       # small floor to avoid zeros
       w_s <- w_s / sum(w_s)
     } else if (s == 1) {
@@ -565,20 +565,15 @@ run_bootstrap_list <- function(INT,
 ##################################################
 
 
-run.new.zcurve = function(val.input, w.start, NCP.FIXED=TRUE,ZSDS.FIXED = TRUE) {
+run.new.zcurve = function(val.input, w_start, NCP.FIXED=TRUE,ZSDS.FIXED = TRUE) {
 
-#NCP.FIXED = FALSE;ZSDS.FIXED = FALSE
-#zsds = 1.1; ncp = 2.5
-#print("FREE or FIXED?")
-#print(NCP.FIXED)
-#print(ZSDS.FIXED)
 
 INT = val.input[val.input > Int.Beg & val.input < Int.End]
 
 res.run <- EM_EXT_FOLDED_MULTISTART(INT = INT,
               ncp = ncp,
               zsds = zsds,
-			 w.start = w.start,
+			 w_start = w_start,
               Int.Beg = Int.Beg,
               Int.End = Int.End,
               NCP.FIXED = NCP.FIXED,
@@ -1093,28 +1088,27 @@ return(res.ci)
 
 
 Write.Local.Power = function(loc.power) {
-	names(loc.power) = paste0("LP",seq(1,length(loc.power)))
-	int = seq(x.lim.min,x.lim.max-int.loc,int.loc)+int.loc/2
 
-	if (int.loc > 0) {
+  if (int.loc == 0) return(invisible(NULL))
 
-	old_mar <- par("mar")
-	par(mar = old_mar + c(1, 0, 0, 0))  # increase bottom margin by 2 lines
+  # Midpoints of each bin — these are the correct label positions
+  midpoints = seq(x.lim.min, x.lim.max - int.loc, by = int.loc) + int.loc / 2
 
-	new.y = 0
+  # Format labels
+  lab = paste0(round(loc.power * 100), "%")
+#  lab = paste0(format(round(loc.power * 100), nsmall = 0), "%")
 
-	lab = c()
-	for (i in 1:length(int)) lab[i] = paste0("   ",format(round(loc.power[i]*100),nsmall=0),"%")
-	
-	x_pos  <- seq(x.lim.min, x.lim.max, length.out = length(lab))
+  # Add bottom margin for the extra label row
+  old_mar = par("mar")
+  par(mar = old_mar + c(1.5, 0, 0, 0))
 
-	mtext(lab, side=1, line=.8, at=x_pos, cex=1.0, las=2)
+  mtext(lab, side = 1, line = 1.8, at = midpoints, cex = 1.0, las = 1)
+  #mtext(lab, side = 1, line = 2, at = midpoints, cex = 1.0, las = 1)
 
-	par(mar = old_mar) 
+  par(mar = old_mar)
 
-	} #Don't do if int.loc == 0
+} ### EOF Write.Local.Power
 
-}
 
 
 ###################################################
@@ -1872,192 +1866,6 @@ return(res)
 
 
 
-################################################################
-### USE EXTENDED CURVE (Est.Method = "EXT"  (slower than OF)
-################################################################
-
-extended.curve = function(vals,startval=NULL,ncp=ncp,zsds=zsds) {
-
-### this is the actual fitting function
-extended.curve.fitting = function(para,RetEst=FALSE,Fixed.Null=FALSE)    {
-
-### get the weights
-weights = para[1:components]
-means = para[(components+1):(2*components)]
-sds = para[(components*2+1):(3*components)]
-
-i = 1
-j = 1
-k = 1
-### get the densities for each interval and each non-centrality parameter
-Dens	= c()
-for(i in 1:n.bars) {
-	for (j in 1:components) {
-		if (CURVE.TYPE == "z") {
-			Dens = c(Dens,
-			dnorm(D.X[i],means[j],sds[j]) +
-			dnorm(-D.X[i],means[j],sds[j]) 
-			)
-		} else {
-			sds = sds - 1
-			sds[sds <= 0] = 0
-			sds
-			if (max(sds) > 0) {
-				Dens = c(Dens,
-				dt(D.X[i],df,means[j]) +
-				dt(-D.X[i],df,means[j])
-				)
-			} else { 
-				Dens = c(Dens,
-				dt(D.X[i],df,means[j]) +
-				dt(-D.X[i],df,means[j])
-				)
-			}
-		}
-	}
-}
-
-Dens = matrix(Dens,length(ncp),byrow=FALSE)
-
-### rescale the densities for the range of z-values to 1
-row.sum.dens = rowSums(Dens)
-Dens = Dens/(row.sum.dens * bar.width)
-dim(Dens)
-summary(Dens)
-
-
-### compute the new estimated density distribution
-E.D.Y = colSums(Dens*weights)
-
-### compare to observed density distribution
-rmse = sqrt(mean((E.D.Y-O.D.Y)^2));rmse
-
-
-### return either fit if continue or estimates if finished
-value = rmse
-if(RetEst) value = est
-
-
-### showing the fitting of the function in a plot
-if(Plot.Fitting) {
-
-	rval = runif(1)
-	if (rval > .4) {
-
-	tit = ""
-	xyy = cbind(D.X,O.D.Y,E.D.Y)
-	plot(xyy[,1],xyy[,2],type='l',
-		xlim=c(x.lim.min,x.lim.max),ylim=c(ymin,ymax),
-		main=tit,xlab='Z')
-	lines(xyy[,1],xyy[,3],lty=1,col="red1",
-		xlim=c(x.lim.min,x.lim.max),ylim=c(ymin,ymax))
-	}
-
-}
-
-
-### return value to optimization function
-return(value)
-
-} 
-
-#vals = val.sample
-densy = Get.Densities(vals,bw=bw.est,d.x.min=Int.Beg,d.x.max=Int.End,Augment=Augment)
-
-components = length(ncp);components
-
-D.X = densy[,1]
-O.D.Y = densy[,2]
-
-#plot(D.X,O.D.Y)
-
-n.bars = length(D.X)
-n.bars
-
-bar.width = D.X[2] - D.X[1]
-bar.width
-
-#startval = NULL
-
-if (is.null(startval)) {
-
-if (W.FIXED) {
-	startval = w.fix
-} else {
-	startval = rep(1/components, components)
-}
-
-startval = c(startval,ncp)
-
-startval = c(startval,zsds)
-
-} # End of startval
-
-###
-
-if (W.FIXED) {
-	lowlim = w.fix
-	highlim = w.fix
-} else {
-	lowlim = rep(0,components)
-	highlim = rep(1,components)
-}
-
-if (NCP.FIXED) {
-	lowlim = c(lowlim,ncp)
-	highlim = c(highlim,ncp)
-} else {
-	lowlim = c(lowlim,rep(0,components))
-	highlim = c(highlim,rep(Int.End,components))
-}
-
-if (ZSDS.FIXED) { 
-	lowlim = c(lowlim,zsds)
-	highlim = c(highlim,zsds)
-} else {
-	lowlim = c(lowlim,rep(1,components))
-	highlim = c(highlim,zsds)
-}
-
-if(components == 1) lowlim[1] = 1
-
-#TESTING = TRUE
-if (TESTING == TRUE) Plot.Fitting = TRUE
-
-auto = nlminb(startval,extended.curve.fitting,lower=lowlim,upper=highlim,control=list(eval.max=1000))
-
-para = auto$par
-
-w.inp = para[1:components]
-w.inp = w.inp / sum(w.inp)
-ncp.est = para[(components+1):(2*components)]
-zsds.est = para[(components*2+1):(3*components)]
-
-fit = auto$objective
-
-res = list(
-    ncp.est = ncp.est,
-	zsds.est = zsds.est,
-	w.inp = w.inp,
-    fit = fit
-)
-
-res
-
-return(res)
-
-} 
-
-######################################################
-### End of Extended Zcurve
-#######################################################
-
-
-#######################################################
-### Begin Old Fashioned Zcurve (Est.Method = "OF" 
-#######################################################
-
-
 #########################################################################
 ### This Function Computes Power from Weights and Non-Centrality Parameters
 #########################################################################
@@ -2180,7 +1988,6 @@ return(res)
 #####################################
 #####################################
 
-
 Compute.Power.T = function(para,Int.Beg=crit,BOOT=FALSE) {
 
 #para = para.est.OF
@@ -2300,111 +2107,197 @@ return(res)
 #####################################
 #####################################
 
+### Claude.26.03.14
+
+Compute.Power.Z.Discrete = function(cp.input, Int.Beg = 1.96) {
+
+  w.inp      = cp.input$w.inp
+  ncp        = cp.input$ncp
+  components = length(ncp)
+
+  # Extreme value correction
+  ext.inp = length(val.input[val.input > Int.End]) /
+            length(val.input[val.input > Int.Beg])
+
+  # Component power (two-tailed, with sign error)
+  pow.dir = pnorm(abs(ncp), crit)
+  pow     = pow.dir + (1 - pnorm(ncp, -crit))
+
+  # Power conditional on selection interval
+  pow.sel = pnorm(ncp, Int.Beg) + pnorm(-ncp, Int.Beg)
+
+  # Extend vectors with extreme component
+  pow.ext     = c(pow,     1)
+  pow.dir.ext = c(pow.dir, 1)
+  pow.sel.ext = c(pow.sel, 1)
+  w.inp.ext   = c(w.inp * (1 - ext.inp), ext.inp)
+
+  # Correct for selection: w.all = w.inp / pow.sel, normalized
+  w.inp.ext   = c(w.inp * (1 - ext.inp), ext.inp)
+  pow.sel.ext = c(pow.sel, 1)
+
+  w.all.ext   = (w.inp.ext / pow.sel.ext)
+  w.all.ext   = w.all.ext / sum(w.all.ext)
+
+  w.all = w.all.ext[1:components]
+
+  # EDR: average power over all studies (pre-selection)
+  EDR = sum(w.all.ext * pow.ext)
+
+  # ERR: average directional power over significant studies
+  w.sig.ext = w.all.ext * pow.ext
+  w.sig.ext = w.sig.ext / sum(w.sig.ext)
+  ERR = sum(w.sig.ext * pow.dir.ext)
+
+  ERR = min(max(ERR, alpha / 2), 1)
+  EDR = min(max(EDR, alpha),     1)
+
+  EDR
+  ERR
 
 
-
-###############################################################
-
-Compute.Power.Z.General = function(cp.input,Int.Beg=1.96) {
-
-deci = 2
-
-ext.inp = length(val.input[val.input > Int.End]) / 
-	length(val.input[val.input > Int.Beg])
-ext.inp
-
-
-components = length(cp.input$ncp)
-
-pow.sel = pnorm(Int.Beg, cp.input$ncp, lower.tail=FALSE) + pnorm(-Int.Beg, cp.input$ncp)
-
-w.all = cp.input$w.inp / pow.sel
-w.all = w.all / sum(w.all)
-
-ncp = round(cp.input$ncp,deci)
-
-ncp.sd = max(0.001, sqrt(max(1, cp.input$zsds^2) - 1))
-
-#ncp = 2; ncp.sd = 0.4
-
-###
-
-zx.bw = 1/(10^deci)
-zx.bw
-zx = seq(0,Int.End,zx.bw)
-
-
-pow.zx.dir = pnorm(abs(zx),crit) 
-pow.zx.sign.error = + pnorm(-crit,abs(zx))
-pow.zx = pow.zx.dir + pow.zx.sign.error
-
-i = 1
-wd.all = rep(0, length(zx))
-for (i in 1:components) {
-  wd = dnorm(zx, ncp[i], ncp.sd) * w.all[i]
-  wd.all = wd.all + wd
-}
-wd.all = wd.all / sum(wd.all)
-sum(wd.all)
-
-wd.all.ext = wd.all * (1 - ext.inp)
-
-EDR = sum(pow.zx * wd.all.ext) + ext.inp
-ERR.num = sum(pow.zx * wd.all.ext * pow.zx) + ext.inp
-ERR.denom = sum(wd.all.ext * pow.zx.dir) + ext.inp
-ERR = ERR.num / ERR.denom
-
-EDR
-ERR
-
-if (ERR > 1) ERR = 1
-if (EDR > 1) EDR = 1
-
-if (ERR < alpha/2) ERR = alpha/2
-if (EDR < alpha) EDR = alpha 
-
-ERR
-EDR
-
-local.power = NA
+#####
 
 if (int.loc > 0) {
-  dd <- 0
-  for (k in 1:components) {
-    if (ncp.sd < 0.01) {
-      dd_k <- rep(0, length(zx))
-      dd_k[which.min(abs(zx - ncp[k]))] <- 1
-    } else {
-      dd_k <- dnorm(zx, mean = ncp[k], sd = ncp.sd)
-    }
-    dd <- dd + w.all[k] * dd_k
+
+  X     = seq(x.lim.min, Int.End, by = 0.01)
+
+  # Mixture density at each grid point
+  lik.mat = outer(X, ncp, function(x, mu) dnorm(x, mu))
+  wd.X    = lik.mat %*% w.all  # column vector, length(X)
+
+  # Local power: posterior-weighted average of component power
+  loc.p   = (lik.mat %*% (w.all * pow)) / wd.X
+
+  # Bin into intervals, density-weighted average within each bin
+  int  = seq(x.lim.min, x.lim.max, by = int.loc)
+  bins = cut(X, breaks = int, include.lowest = TRUE)
+
+  local.power = as.vector(tapply(seq_along(X), bins, function(idx)) {
+    sum(loc.p[idx] * wd.X[idx]) / sum(wd.X[idx])
+  })
+
+  midpoints           = (int[-length(int)] + int[-1]) / 2
+  names(local.power)  = paste0("lp.", midpoints)
+
+} ### end local power
+
+local.power
+
+####
+
+  return(list(
+    EDR     = EDR,
+    ERR     = ERR,
+    w.all   = w.all.ext[1:components],
+    w.sig   = w.sig.ext[1:components],
+    loc.pow = local.power
+  ))
+
+} ### EOF Compute.Power.Z.Discrete
+
+
+#####
+
+Compute.Power.Z.Continuous = function(cp.input, Int.Beg) {
+
+  deci   = 2
+  zx.bw  = 1 / (10^deci)
+  zx     = seq(0, Int.End, zx.bw)
+
+  components = length(cp.input$ncp)
+  ncp        = round(cp.input$ncp, deci)
+  ncp.sd     = max(1, sqrt(cp.input$zsds^2 - 1))
+
+  # Floor ncp.sd at grid step to prevent underflow
+  ncp.sd = max(zx.bw, ncp.sd)
+
+  pow.sel = pnorm(Int.Beg, ncp, lower.tail = FALSE) + pnorm(-Int.Beg, ncp)
+  pow.sel[pow.sel < .05] = .05
+
+  w.all = cp.input$w.inp / pow.sel
+  w.all = w.all / sum(w.all)
+
+  # Extreme values correction
+  ext.inp = length(val.input[val.input > Int.End]) /
+            length(val.input[val.input > Int.Beg])
+
+  # Power at each grid point
+  pow.zx = pnorm(abs(zx), crit) + pnorm(-crit, abs(zx))
+
+  # Mixture density over grid
+  lik.mat = outer(zx, ncp, function(z, mu) dnorm(z, mu, ncp.sd))
+  wd.mat  = lik.mat * matrix(w.all, nrow = length(zx), ncol = components, byrow = TRUE)
+  wd.all  = rowSums(wd.mat)
+  wd.all  = wd.all / sum(wd.all)
+
+  wd.all.ext = wd.all * (1 - ext.inp)
+
+  EDR       = sum(pow.zx * wd.all.ext) + ext.inp
+  ERR.num   = sum(pow.zx * wd.all.ext * pow.zx) + ext.inp
+  ERR.denom = sum(wd.all.ext * pnorm(abs(zx), crit)) + ext.inp
+  ERR       = ERR.num / ERR.denom
+
+  ERR = min(max(ERR, alpha / 2), 1)
+  EDR = min(max(EDR, alpha),     1)
+
+  EDR
+  ERR
+
+
+  # Local power
+  local.power = NULL
+
+if (int.loc > 0) {
+
+  # Posterior weights: rows = grid points, cols = components
+  row.sums            = rowSums(wd.mat)
+  zero.rows           = row.sums == 0
+  wd.mat[zero.rows, ] = matrix(w.all, nrow = sum(zero.rows),
+                               ncol = components, byrow = TRUE)
+  row.sums[zero.rows] = 1
+  post.mat            = sweep(wd.mat, 1, row.sums, "/")
+
+  # Posterior mean NCP for each (grid point, component) combination
+  # Bayesian update: prior N(ncp_k, ncp.sd), likelihood z ~ N(mu, 1)
+  mu_post_mat  = outer(zx, ncp, function(z, mu_k)
+                   (z * ncp.sd^2 + mu_k) / (ncp.sd^2 + 1))
+
+  # Power at each posterior mean NCP (two-tailed with sign error)
+  pow_post_mat = pnorm(mu_post_mat - crit) + pnorm(-mu_post_mat - crit)
+
+  # Local power: posterior-weighted average of posterior-mean power
+  lp           = rowSums(post.mat * pow_post_mat)
+
+  # Bin into intervals, simple mean within each bin
+  int         = seq(0, Int.End, by = int.loc)
+  bins        = cut(zx, breaks = int, include.lowest = TRUE)
+  local.power = as.vector(tapply(lp, bins, mean))
+  midpoints   = (int[-length(int)] + int[-1]) / 2
+  names(local.power) = paste0("lp.", midpoints)
+
+} ### end local power
+
+  local.power
+
+  return(list(
+    EDR     = EDR,
+    ERR     = ERR,
+    w.all   = w.all,
+    loc.pow = local.power
+  ))
+
+} ### EOF Compute.Power.Z.Continuous
+
+#####
+
+Compute.Power.Z.General = function(cp.input, Int.Beg = 1.96) {
+  if (max(cp.input$zsds) < 1.01) {
+    Compute.Power.Z.Discrete(cp.input, Int.Beg)
+  } else {
+    Compute.Power.Z.Continuous(cp.input, Int.Beg)
   }
-  dd <- dd / sum(dd)
-  
-  int <- seq(0, Int.End, by = int.loc)
-  local.power <- c()
-  for (i in 1:(length(int)-1)) {
-    segment <- (zx >= int[i]) & (zx < int[i+1])
-    denom <- sum(dd[segment])
-    local.power <- c(local.power, if (denom == 0) NA else sum(pow.zx[segment] * dd[segment]) / denom)
-  }
-  names(local.power) <- paste0("lp.", seq_along(local.power))
-
-} ### end of local power
-
-
-res = list(
-   EDR = EDR,
-   ERR = ERR,
-   w.all = w.all,
-   loc.pow = local.power
-)
-
-
-### to be past back to the main program from this function
-return(res)
-
-} ### EOF Compute.Power.Z.General
+}
 
 
 #####################################
@@ -2511,10 +2404,7 @@ w_start = NULL
 
 ### OLD FASHIONED Z-CURVE 
 
-#zsds = rep(1,components)
-
-### run always to get starting values
-### if (Est.Method %in% c("OF","CLU")) {
+### run always to get starting values, unless one component model
 
 if(components > 1 & ZSDS.FIXED == TRUE & NCP.FIXED == TRUE) {
 
@@ -2555,7 +2445,7 @@ names(bias) = c("OBS.JS","EXP.JS","EJS.p")
 
 results = list(
 	slope = slope,
-    ODR = ODR,
+	ODR = ODR,
 	EDR = EDR,
 	ERR = ERR,
 	FDR = FDR,
@@ -2571,10 +2461,13 @@ w_from_density <- cp.input$w.inp
 w_start <- w_from_density + 0.1  # small floor
 w_start <- w_start / sum(w_start)  # renormalize
 w_start
-#results
+
+
+#print(results)
 
 } # EOF Est.Method OF
  
+
 
 ##########################################################
 
@@ -2672,7 +2565,7 @@ if(Est.Method == "NEW") {
 
 	w.all = if (is.null(dim(res.new$w.all))) res.new$w.all else res.new$w.all[1,]
 
-	loc.power = if (is.null(dim(res.new$loc.power))) res.new$loc.power else res.new$loc.power[1,]
+	loc.power = if (is.null(dim(res.new$loc.pow))) res.new$loc.power else res.new$loc.pow[1,]
 
 	bias = c(NA,NA,NA)
 	if(TEST4BIAS) { 
@@ -2688,13 +2581,27 @@ if(Est.Method == "NEW") {
 		ERR = res.new$ERR,
 		FDR = FDR,
 		ncp = res.new$ncp,
-	    zsds = res.new$zsds,
+		zsds = res.new$zsds,
 		w.all = res.new$w.all,	
 		bias = bias,
- 	   fit = res.new$loglik
+		fit = res.new$loglik
 	  )
 
-	results = results.new
+	results = list(
+		slope = slope,
+		ODR = ODR.res,
+		EDR = res.new$EDR[1],
+		ERR = res.new$ERR[1],
+		FDR = FDR[1],
+		ncp = res.new$ncp[1,1],
+		zsds = res.new$zsds[1,1],
+		w.all = res.new$w.all[1,1],	
+		bias = bias,
+		fit = res.new$loglik[1,1]
+	  )
+
+	results
+
 
 } 
 
@@ -2752,6 +2659,8 @@ if (Est.Method %in% c("CLU", "CLU-W","CLU-B") & boot.iter >= 0) {
 ### This Code is Used to Create Graphic
 ##########################################
 
+#CCC
+
 if (Show.Histogram & sum(extreme,na.rm=TRUE) < .95) { 
 
 	print("Show Histogram")
@@ -2760,7 +2669,7 @@ if (Show.Histogram & sum(extreme,na.rm=TRUE) < .95) {
 
 	if (Show.KD) Draw.KD(val.input,w.all,cola=col.kd)
 
-	if (Show.Curve.All & max(results$zsds) < 1.05) {
+	if (Show.Curve.All & results$zsds < 1.05) {
 
 		Draw.Curve.All(w=w.all,cola=col.curve,
 			Ltype=3,Lwidth = 4,x.start=x.lim.min,x.end=x.lim.max)
@@ -2773,9 +2682,9 @@ if (Show.Histogram & sum(extreme,na.rm=TRUE) < .95) {
 
 		print("Showing SDG1 PLOT")	
 
-		Draw.Curve.All.SDG1(w=w.all,ncp=ncp,zsds=zsds,cola=col.curve,
+		Draw.Curve.All.SDG1(w=w.all,ncp=results$ncp,zsds=results$zsds,cola=col.curve,
 			Ltype = 3,Lwidth = 4,x.start=x.lim.min,x.end=x.lim.max)
-		Draw.Curve.All.SDG1(w=w.all,ncp=ncp,zsds=zsds,cola=col.curve,
+		Draw.Curve.All.SDG1(w=w.all,ncp=results$ncp,zsds=results$zsds,cola=col.curve,
 			Ltype=1,Lwidth = 4,x.start=Int.Beg,x.end=Int.End)
 		}
 
@@ -2825,6 +2734,7 @@ if (boot.iter > 0 & substring(Est.Method,1,3) == "CLU") {
 
 if (boot.iter > 0 & Est.Method == "NEW") results = results.new
 
+zsds.check = max(results$zsds[1,])
 
 if (boot.iter > 0 & Show.Histogram) {
 
@@ -2832,26 +2742,23 @@ if (boot.iter > 0 & Show.Histogram) {
 
 	if (Show.KD) Draw.KD(val.input,w.all,cola=col.kd)
 
-	if (Show.Curve.All & Est.Method != "DF" & max(zsds) < 1.05) {
+	if (Show.Curve.All & Est.Method != "DF" & zsds.check < 1.05) {
 		Draw.Curve.All(w=w.all,cola=col.curve,
 			Ltype=3,Lwidth = 4,x.start=x.lim.min,x.end=x.lim.max)
 		Draw.Curve.All(w=w.all,cola=col.curve,
 			Ltype=1,Lwidth = 4,x.start=Int.Beg,x.end=Int.End)
 		}
 
-	if (Show.Curve.All & Est.Method != "DF" & max(zsds) > 1.05) {
-		Draw.Curve.All.SDG1(w=w.all,ncp=ncp,zsds=zsds,cola=col.curve,
+	if (Show.Curve.All & Est.Method != "DF" & zsds.check > 1.05) {
+		Draw.Curve.All.SDG1(w=w.all,ncp=results$ncp,zsds=results$zsds,cola=col.curve,
 			Ltype = 3,Lwidth = 4,x.start=x.lim.min,x.end=x.lim.max)
-		Draw.Curve.All.SDG1(w=w.all,ncp=ncp,zsds=zsds,cola=col.curve,
+		Draw.Curve.All.SDG1(w=w.all,ncp=results$ncp,zsds=results$zsds,cola=col.curve,
 			Ltype=1,Lwidth = 4,x.start=Int.Beg,x.end=Int.End)
 		}
 
-	if (Show.Curve.Sig) {
-		Draw.Curve.Sig(val.input,ncp=ncp,zsds=zsds,w.sig,cola=col.curve,Ltype=3,x.start=x.lim.min)
-		Draw.Curve.Sig(val.input,ncp=ncp,zsds=zsds,w.sig,cola=col.curve,Ltype=1,x.start=Int.Beg)
-		}
-		#	par(family = fam[1])	
-		if (!is.na(loc.power[1])) Write.Local.Power(loc.power)
+
+	if (length(loc.power) > 0 && !is.na(loc.power[1])) Write.Local.Power(loc.power)	
+
 
 } # End of Show.Histogram	for bootstrap
 
