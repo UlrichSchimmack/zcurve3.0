@@ -608,13 +608,12 @@ res.pe = list(
    ERR = cp.res$ERR,
    ncp = res.run$ncp,
    zsds = res.run$zsds,
+   w.inp = res.run$w.inp,
    w.sig = cp.res$w.sig,
    w.all = cp.res$w.all,
    loc.pow = cp.res$loc.pow,
    loglik = res.run$loglik
 )
-
-zcurve.res = res.pe 
 
 ######################
 
@@ -642,7 +641,6 @@ lcbind <- function(list1, list2) {
 
 
 boot_list = lcbind(boot_res,boot_power)
-boot_list
 
 lquantile <- function(boot_list, probs = c(0.025, 0.975)) {
   fields <- names(boot_list[[1]])
@@ -656,8 +654,6 @@ lquantile <- function(boot_list, probs = c(0.025, 0.975)) {
   result
 }
 
-boot_list
-
 get.ci <- function(boot_list, probs = c(0.025, 0.975)) {
   ci <- lquantile(boot_list, probs = probs)
 }
@@ -668,13 +664,13 @@ res.ci = get.ci(boot_list)
 
 res.ci = list(
  w.inp = matrix(NA,2,components), 
+ w.all = matrix(NA,2,components),
+ w.sig = matrix(NA,2,components),
  ncp = matrix(NA,2,components),
  zsds = matrix(NA,2,components),
  loglik = matrix(NA,2,1),
  EDR = matrix(NA,2,1),
  ERR = matrix(NA,2,1),
- w.all = matrix(NA,2,components),
- w.sig = matrix(NA,2,components),
  loc.pow = matrix(NA,2,length(res.pe$loc.pow))
 )
 
@@ -1602,7 +1598,11 @@ if (Show.Significance) {
 Draw.Curve.All.SDG1 = function(w.inp,ncp=ncp,zsds=zsds,cola=col.curve,
 	Ltype=1,Lwidth=4,x.start=x.lim.min,x.end=x.lim.max) {
 
-#x.start = x.lim.min; x.end = x.lim.max;Ltype = 3;Lwidth = 4;cola = col.hist
+
+#results$w.inp
+if(length(w.inp) > components) w.inp = w.inp[1,]
+if(length(ncp) > components) ncp = ncp[1,]
+if(length(zsds) > components) zsds = zsds[1,]
 
 components = length(ncp)
 
@@ -1615,18 +1615,12 @@ if (components == 1) {
 	}
 	d.sim = cbind(D.X,D.Y)
 } else {
-	k.sim = 500000
-	sim.val = c()
-	for (i in 1:components) {
-		if (CURVE.TYPE == "z") { 
-			sim.val = c(sim.val,rnorm(w.inp[i]*k.sim,ncp[i],zsds[i]))
-		} else {
-			sim.val = c(sim.val,rt(w.inp[i]*k.sim,df,ncp[i]))
-		}
-	}
-	sim.val = abs(sim.val)
-	d.sim = Get.Densities(sim.val[sim.val >= x.lim.min & sim.val < x.lim.max],
-		bw=bw.draw,d.x.min=x.lim.min,d.x.max=x.lim.max,Augment=Augment)
+    print("WARNING NOT SUPPOSED TO DO THIS")
+    print(components)
+    print(w.inp)
+    print(k.sim)
+    print(ncp)
+    print(zsds)
 }
 dim(d.sim)
 
@@ -2607,6 +2601,7 @@ if(Est.Method == "NEW") {
 		FDR = FDR,
 		ncp = res.new$ncp,
 		zsds = res.new$zsds,
+		w.inp = res.new$w.inp,
 		w.all = res.new$w.all,	
 		bias = bias,
 		fit = res.new$loglik
@@ -2757,14 +2752,14 @@ if (boot.iter > 0 & Show.Histogram) {
 
 	if (Show.KD) Draw.KD(val.input,w.all,cola=col.kd)
 
-	if (Show.Curve.All & Est.Method != "DF" & zsds.check < 1.05) {
+	if (Show.Curve.All & zsds.check < 1.05) {
 		Draw.Curve.All(w=w.all,cola=col.curve,
 			Ltype=3,Lwidth = 4,x.start=x.lim.min,x.end=x.lim.max)
 		Draw.Curve.All(w=w.all,cola=col.curve,
 			Ltype=1,Lwidth = 4,x.start=Int.Beg,x.end=Int.End)
 		}
 
-	if (Show.Curve.All & Est.Method != "DF" & zsds.check > 1.05) {
+	if (Show.Curve.All & zsds.check > 1.05) {
 		Draw.Curve.All.SDG1(w=w.all,ncp=results$ncp,zsds=results$zsds,cola=col.curve,
 			Ltype = 3,Lwidth = 4,x.start=x.lim.min,x.end=x.lim.max)
 		Draw.Curve.All.SDG1(w=w.all,ncp=results$ncp,zsds=results$zsds,cola=col.curve,
