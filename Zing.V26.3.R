@@ -5,7 +5,7 @@
 ### SETTING PARAMETERS FOR Z-CURVE MODEL
 ########################################################################
 
-version <- "Version 2026.03.15"   # Version label to appear on plots
+version <- "Version.3.4 (2026.03.18)"   # Version label to appear on plots
 
 # Optional cleanup 
 # rm(list = ls())
@@ -13,20 +13,13 @@ version <- "Version 2026.03.15"   # Version label to appear on plots
 
 ### INSTALL PACKAGES (only once – manually run if needed)
 if (1 == 2) {  # This block is ignored unless manually changed to (1 == 1)
-  install.packages("pwr")
-  install.packages("zcurve")
   install.packages("KernSmooth")
   install.packages("parallel")
-  install.packages("stringr")
 } # END install block
 
 ### LOAD LIBRARIES
 library(parallel)
 library(KernSmooth)
-library(zcurve)
-library(stringr)
-library(pwr)
-
 
 ########################################################################
 ### GLOBAL PARAMETERS
@@ -72,7 +65,6 @@ sig.levels <- c()            # Optional: mark additional p-value thresholds on p
 
 int.loc <- 0.5               # Plot local power intervals below x-axis (set 0 to disable)
 hist.bar.width <- 0.2        # Width of histogram bars
-bw.draw <- 0.10              # Smoothing for kernel density display
 
 ### CONSOLE OUTPUT
 
@@ -88,7 +80,7 @@ two.sided <- TRUE                   # Assume two-sided z-values (use abs(z)); no
 # Color scheme
 col.curve <- "violetred3"
 col.hist <- "blue3"
-col.kd <- "green3"
+col.kd <- "black"
 
 Est.Method <- "OF"                  # Estimation method: "OF", "EM", or "EXT"
                                     # Clustered Data: "CLU-W" (weighted),"CLU-B" (bootstrap)   
@@ -113,11 +105,9 @@ fixed.false.positives <- 0          # If > 0, constrains proportion of false pos
 n.bars <- 512                       # Number of bars in histogram
 
 Augment <- TRUE                     # Apply correction for bias at lower bound
-Augment.Regression <- FALSE         # Use Slope for Augmentation
-Augment.Factor <- 1                 # Amount of augmentation
 
-bw.est <- 0.05                      # Bandwidth for kernel density (lower = less smoothing, higher = more smoothing)
-bw.aug <-  .20					 # Width of Augmentation interval
+bw.est  <- 0.05                     # Bandwidth for kernel density (lower = less smoothing, higher = more smoothing)
+bw.draw <-  .20   		        	 # Bandwith of kernel density in plot
 
 ### INPUT RESTRICTIONS
 
@@ -503,12 +493,15 @@ run_bootstrap_list <- function(INT,
                                zsds.start,
                                Int.Beg,
                                Int.End,
-                               B          = 1000,
+                               boot.iter  = 1000,
                                NCP.FIXED  = TRUE,
                                ZSDS.FIXED = TRUE,
                                W.FIXED    = FALSE,
                                n_starts   = 10,
-                               cores      = round(parallel::detectCores() * .7)) {
+                               cores      = round(parallel::detectCores() * .8)) {
+
+  ncores <- max(1, cores)
+  cat("Using", ncores, "cores\n")
 
   cl <- parallel::makeCluster(cores)
 
@@ -530,7 +523,7 @@ run_bootstrap_list <- function(INT,
 
   parallel::clusterEvalQ(cl, library(stats))
 
-  boot_res <- parallel::parLapply(cl, 1:B, function(i) {
+  boot_res <- parallel::parLapply(cl, 1:boot.iter, function(i) {
 
     boot_sample <- sample(INT, length(INT), replace = TRUE)
 
@@ -555,7 +548,7 @@ run_bootstrap_list <- function(INT,
       w.inp  = fit$w.inp.est,
       ncp    = fit$ncp,
       zsds   = fit$zsds,
-      loglik = fit$loglik
+      fit = fit$loglik
     )
   })
 
@@ -575,8 +568,7 @@ run_bootstrap_list <- function(INT,
 ##################################################
 
 
-run.new.zcurve = function(val.input, w_start, NCP.FIXED=TRUE,ZSDS.FIXED = TRUE) {
-
+run.new.EM = function(val.input, w_start, boot.iter=0, NCP.FIXED=TRUE,ZSDS.FIXED = TRUE) {
 
 INT = val.input[val.input > Int.Beg & val.input < Int.End]
 
@@ -612,7 +604,7 @@ res.pe = list(
    w.sig = cp.res$w.sig,
    w.all = cp.res$w.all,
    loc.pow = cp.res$loc.pow,
-   loglik = res.run$loglik
+   fit = res.run$loglik
 )
 
 ######################
@@ -624,7 +616,7 @@ boot_res <- run_bootstrap_list(INT = INT,
                           zsds.start = zsds,
                           Int.Beg = Int.Beg,
                           Int.End = Int.End,		
-                          B = boot.iter,
+                          boot.iter = boot.iter,
                           NCP.FIXED = NCP.FIXED,
                           ZSDS.FIXED = ZSDS.FIXED,
                           W.FIXED = FALSE)
@@ -642,37 +634,41 @@ lcbind <- function(list1, list2) {
 
 boot_list = lcbind(boot_res,boot_power)
 
-lquantile <- function(boot_list, probs = c(0.025, 0.975)) {
-  fields <- names(boot_list[[1]])
+
+  lquantile <- function(boot_list, probs = c(0.025, 0.975)) {
+    fields <- names(boot_list[[1]])
+    
+    result <- lapply(fields, function(f) {
+      vals <- lapply(boot_list, function(x) x[[f]])
+      if (all(sapply(vals, is.null))) return(NULL)
+      mat <- do.call(rbind, vals)
+      apply(mat, 2, quantile, probs = probs, na.rm = TRUE)
+    })
   
-  result <- lapply(fields, function(f) {
-    mat <- do.call(rbind, lapply(boot_list, function(x) x[[f]]))
-    apply(mat, 2, quantile, probs = probs, na.rm = TRUE)
-  })
-  
-  names(result) <- fields
-  result
-}
+    names(result) <- fields
+    result[!sapply(result, is.null)]
+  }
 
-get.ci <- function(boot_list, probs = c(0.025, 0.975)) {
-  ci <- lquantile(boot_list, probs = probs)
-}
 
-res.ci = get.ci(boot_list)
+  get.ci <- function(boot_list, probs = c(0.025, 0.975)) {
+    ci <- lquantile(boot_list, probs = probs)
+  }
 
-} else {
+  res.ci = get.ci(boot_list)
 
-res.ci = list(
- w.inp = matrix(NA,2,components), 
- w.all = matrix(NA,2,components),
- w.sig = matrix(NA,2,components),
- ncp = matrix(NA,2,components),
- zsds = matrix(NA,2,components),
- loglik = matrix(NA,2,1),
- EDR = matrix(NA,2,1),
- ERR = matrix(NA,2,1),
- loc.pow = matrix(NA,2,length(res.pe$loc.pow))
-)
+} else {  ### if no bootstrap ->
+
+  res.ci = list(
+    w.inp = matrix(NA,2,components), 
+    w.all = matrix(NA,2,components),
+    w.sig = matrix(NA,2,components),
+    ncp = matrix(NA,2,components),
+    zsds = matrix(NA,2,components),
+    fit = matrix(NA,2,1),
+    EDR = matrix(NA,2,1),
+    ERR = matrix(NA,2,1),
+    loc.pow = matrix(NA,2,length(res.pe$loc.pow))
+  )
 
 }
 
@@ -721,9 +717,9 @@ if (1 == 2) {
 
 source(zcurve3)
 
-boot.iter = 0
+boot.iter = 100
 
-zcurve.res = run.new.zcurve(val.input,NCP.FIXED,ZSDS.FIXED)
+zcurve.res = run.new.EM(val.input,boot.iter,NCP.FIXED,ZSDS.FIXED)
 
 zcurve.res.3d = round_list(zcurve.res)
 zcurve.res.3d
@@ -731,137 +727,577 @@ zcurve.res.3d
 }
 
 
-
-##################################################################
-
+############################################################
 ### Functions used in Zing
-
-#######################################################################
-
-
 ############################################################
-############################################################
-############################################################
+
+
 ############################################################
 ### SLOPE DIAGNOSTICS
+############################################################
 
-adj_density <- function(zval,
-                        Int.Beg = 1.96,
-                        z.crit = 1.96,
-                        bw = 0.1,
-                        aug.bw = 0.2,
-                        n.bars = 512,
-                        max.z = NULL,
-                        d.x.max = Int.Beg + 1) {
+get_slope <- function(INT, Int.Beg = 1.96, width = 1, min_in_window = 10, bw = 0.1) {
+
+from <- Int.Beg + 2 * bw
+to <- Int.Beg + 2 * bw + width
+
+k.slope = length(INT[INT >= from & INT <= to])
   
-  zval <- abs(zval[is.finite(zval)])
-  if (length(zval) == 0) return(NULL)
-  
-  if (is.null(max.z)) max.z <- max(zval)
-  
-  if (Int.Beg < max.z) {
-    
-    AUG <- c()
-    
-    if (Int.Beg >= z.crit + 2*bw) {
-      AUG <- zval[zval > (Int.Beg - 2*bw) & zval < Int.Beg]
-    }
-    
-    if (Int.Beg < z.crit + 2*bw) {
-      n.AUG <- round(length(zval[zval > Int.Beg & zval < (Int.Beg + aug.bw)]))
-      if (n.AUG > 0) {
-        AUG <- seq(Int.Beg - aug.bw, Int.Beg - 0.01, aug.bw / n.AUG)
-      }
-    }
-    
-    Z.INT.USE <- c(zval, AUG)
-    
-  } else {
-    # If Int.Beg is beyond the data, there is nothing to estimate
-    return(NULL)
-  }
-  
-  density(Z.INT.USE, n = n.bars, bw = bw, from = Int.Beg, to = d.x.max)
+if (k.slope >= min_in_window) {
+
+  d <- Get.Densities(INT, bw = bw, from = from, to = to,
+       width = width, Augment = FALSE)
+  fit <- lm(d$ZY ~ d$ZX)
+  slope <- unname(coef(fit)[2])
+
+  out = c(k.slope = k.slope, slope = slope)
+
+} else { 
+  out = c(k.slope = k.slope, slope = NA)
 }
 
+out
 
-slope_adj <- function(zval, Int.Beg = 1.96, width = 1, min_in_window = 10, ...) {
-  
-  zval <- abs(zval[is.finite(zval)])
-  k.slope <- sum(zval >= Int.Beg & zval <= (Int.Beg + width))
-  
-  slope <- NA_real_
-  
-  if (k.slope >= min_in_window) {
-    
-    d <- adj_density(zval, Int.Beg = Int.Beg, d.x.max = Int.Beg + width, ...)
-    if (!is.null(d)) {
-      
-      idx <- d$x < (Int.Beg + width) & is.finite(d$y)
-      
-      if (sum(idx) >= 5) {
-        fit <- lm(d$y[idx] ~ d$x[idx])
-        slope <- unname(coef(fit)[2])
-      }
-    }
-  }
-  
-  c(k.slope = k.slope, slope = slope)
-}
+} # EOF get_slope
 
 ############################################################
 ### END OF SLOPE DIAGNOSTICS
 
 
+build.Dens <- function(D.X, ncp, zsds, df, CURVE.TYPE) {
 
+  n.bars <- length(D.X)
+  components <- length(ncp)
+  Dens <- matrix(0, nrow = components, ncol = n.bars)
+  
+  if (CURVE.TYPE == "z") {
+    for (i in 1:n.bars) {
+      for (j in 1:components) {
+        Dens[j, i] <- dnorm(D.X[i], ncp[j], zsds[j]) +
+                       dnorm(-D.X[i], ncp[j], zsds[j])
+      }
+    }
+  } else {
+    for (i in 1:n.bars) {
+      for (j in 1:components) {
+        Dens[j, i] <- dt(D.X[i], df, ncp[j]) +
+                       dt(-D.X[i], df, ncp[j])
+      }
+    }
+  }
 
-get.t.density = function(tx) {     
-
-n.bars = length(tx);n.bars
-bar.width = tx[2]-tx[1]
-
-Dens	= c()
-for(i in 1:n.bars) {
-	for (j in 1:length(ncp)) {
-		Dens = c(Dens,
-		dt(tx[i],df,ncp[j]) +
-		dt(-tx[i],df,ncp[j])
-		)
-	}
+  Dens
+  
+  return(Dens)
 }
-Dens = matrix(Dens,length(ncp),byrow=FALSE)
-row.sum.dens = rowSums(Dens)
-Dens = Dens/(row.sum.dens * bar.width)
 
-return(Dens)
 
-} # EOF get.t.density 
+##############################################
+### Get Densities
+##############################################
 
-####################################
+Get.Densities = function(INT, bw = 0.20, from = 1.96, to = 6, width = 1, Augment = TRUE) {
 
-get.z.density = function(zx) {     
+  #from = 1.96; to = 6;bw = .2
 
-n.bars = length(zx);n.bars
-bar.width = zx[2] - zx[1]
+  n = 401
+  grid <- seq(from, to, length.out = n)
+  dens <- numeric(n)
 
-Dens	= c()
-for(i in 1:n.bars) {
-	for (j in 1:length(ncp)) {
-		Dens = c(Dens,
-		dnorm(zx[i],ncp[j],zsds[j]) +
-		dnorm(-zx[i],ncp[j],zsds[j])
-		)
-	}
+  width = 0
+  
+  if (Augment) {
+
+    bnd.width <- 2 * bw
+
+    splice <- from + bnd.width
+    bnd.idx <- which(grid < splice)
+    int.idx <- which(grid >= splice)
+    
+    ## ---- Truncated normal kernel for boundary zone ----
+    INT.s <- INT - from
+    for (i in bnd.idx) {
+      z.s <- grid[i] - from
+      raw <- dnorm(INT.s, z.s, bw)
+      trunc.corr <- pnorm(z.s / bw)
+      dens[i] <- mean(raw) / trunc.corr
+    }
+ 
+    ## ---- bkde for interior ----
+    bkde.out <- bkde(INT, bandwidth = .05, range.x = c(from, to), gridsize = n)
+    dens[int.idx] <- bkde.out$y[int.idx]
+    
+    ## ---- Calibrate: scale bkde to match truncated normal at splice ----
+    tn.at.splice <- dens[max(bnd.idx)]
+    bkde.at.splice <- bkde.out$y[min(int.idx)]
+    if (bkde.at.splice > 0) {
+      scale.factor <- tn.at.splice / bkde.at.splice
+      dens[int.idx] <- dens[int.idx] * scale.factor
+    
+    
+      ## ---- Blend over transition ----
+      blend.n <- min(5, length(bnd.idx))
+      for (j in 1:blend.n) {
+        idx <- max(bnd.idx) - blend.n + j
+        w <- j / (blend.n + 1)
+        dens[idx] <- (1 - w) * dens[idx] + w * bkde.out$y[idx] * scale.factor
+      }
+    
+      dens <- pmax(0, dens)
+    }
+
+    
+  } else {
+
+    bkde.out <- bkde(INT, bandwidth = bw, range.x = c(from, to), gridsize = n)
+    dens <- bkde.out$y
+
+  }
+  
+  D <- data.frame(ZX = grid, ZY = dens)
+  bar.width <- D$ZX[2] - D$ZX[1]
+  D$ZY <- D$ZY / (sum(D$ZY * bar.width))
+
+  #plot(D$ZX,D$ZY)
+
+  return(D)
+
+} # EOF Get.Densities 
+
+#######################################################
+### End of Get Densities
+#######################################################
+
+
+#######################################################
+### Old Fashioned Density Method
+#######################################################
+
+old.fashioned <- function(val.input, cola = "springgreen4",bw.est = .2,
+                          Dens.precomputed = NULL, D.X.precomputed = NULL,
+                          width = 1, 
+                          NCP.FIXED = TRUE, ZSDS.FIXED = TRUE) {
+
+
+  #Dens.precomputed = NULL; D.X.precomputed = NULL
+
+  components <- length(ncp)
+
+  ## ---- Observed density ----
+  INT   <- val.input[val.input >= Int.Beg & val.input <= Int.End]
+  densy <- Get.Densities(INT, bw = bw.est, from = Int.Beg,
+                         to = Int.End, Augment = Augment)
+
+  D.X   <- densy[, 1]
+  O.D.Y <- densy[, 2]
+  n.bars    <- length(D.X)
+  bar.width <- D.X[2] - D.X[1]
+
+  #plot(D.X,O.D.Y)
+
+  use.precomputed <- !is.null(Dens.precomputed) &&
+                     !is.null(D.X.precomputed) &&
+                     identical(D.X, D.X.precomputed)
+
+  ## ---- theta = [weights, ncp, zsds] — always ----
+  n.wt <- components
+  if (fixed.false.positives > 0 & 0 %in% ncp) n.wt <- components - 1
+
+
+  startval <- c(rep(1/n.wt, n.wt), ncp, zsds)
+
+  lowlim   <- c(if (n.wt == 1) 1 else rep(0, n.wt),
+                if (NCP.FIXED) ncp else rep(0,components),
+                if (ZSDS.FIXED) zsds else rep(1,components)
+			)
+  highlim  <- c(rep(1, n.wt),
+                if (NCP.FIXED) ncp else rep(6,components),
+                if (ZSDS.FIXED) zsds else rep(6,components)
+			)
+
+  ## ---- Positions (always the same) ----
+  idx.wt  <- 1:n.wt
+  idx.ncp <- (n.wt + 1):(n.wt + components)
+  idx.zsd <- (n.wt + components + 1):(n.wt + 2 * components)
+
+  #theta = startval
+
+  ## ---- Fitting function ----
+  curve.fitting <- function(theta) {
+    wt <- theta[idx.wt]
+    wt <- wt / sum(wt)
+    if (fixed.false.positives > 0)
+      wt <- c(fixed.false.positives, wt * (1 - fixed.false.positives))
+
+    if (use.precomputed && NCP.FIXED && ZSDS.FIXED) {
+      Dens.now <- Dens.precomputed
+    } else {
+      Dens.now <- build.Dens(D.X, theta[idx.ncp], theta[idx.zsd], df, CURVE.TYPE)
+      Dens.now <- Dens.now / (rowSums(Dens.now) * bar.width)
+    }
+
+    E.D.Y <- colSums(Dens.now * wt)
+    #plot(D.X,E.D.Y)
+    rmse = sqrt(mean((E.D.Y - O.D.Y)^2))
+
+    scale = 1
+    ## ---- Diagnostic plot ----
+    if (TESTING && runif(1) > 0.9) {
+      plot(D.X, O.D.Y * scale, type = 'l',
+           xlim = c(x.lim.min, x.lim.max), ylim = c(ymin, ymax),
+           xlab = "", ylab = "", axes = FALSE)
+      lines(D.X, E.D.Y * scale, col = "red1")
+    }
+
+
+    rmse
+
+  }
+
+  #TESTING = FALSE
+  #TESTING = TRUE
+
+  ## ---- Optimize ----
+  auto <- nlminb(startval, curve.fitting,
+                 lower = lowlim, upper = highlim,
+                 control = list(eval.max = 1000, abs.tol = 1e-20))
+
+  auto$par
+
+  ## ---- Extract — positions are guaranteed ----
+  WT <- auto$par[idx.wt]
+  WT <- WT / sum(WT)
+  if (fixed.false.positives > 0)
+    WT <- c(fixed.false.positives, WT * (1 - fixed.false.positives))
+
+out =  list(
+    weights = WT,
+    ncp     = auto$par[idx.ncp],
+    zsds    = auto$par[idx.zsd],
+    fit     = auto$objective
+  )
+
+out
+
 }
-Dens = matrix(Dens,length(ncp),byrow=FALSE)
-row.sum.dens = rowSums(Dens)
-Dens = Dens/(row.sum.dens * bar.width)
-dim(Dens)
 
-return(Dens)
+############################
 
-} #EOF get.z.density
 
+boot.old.fashioned <- function(val.input, boot.iter = 10000, ncores = NULL, seed = 42,
+                                NCP.FIXED = TRUE, ZSDS.FIXED = TRUE) {
+
+
+  #seed = 42
+
+  if (is.null(ncores)) ncores <- max(1, parallel::detectCores() *.8)
+
+  ncores <- max(1, cores)
+  cat("Using", ncores, "cores\n")
+
+  ## ---- Pre-filter to fitting range ----
+  INT <- val.input[val.input >= Int.Beg & val.input <= Int.End]
+
+  ## ---- Precompute Dens only when both fixed ----
+  if (NCP.FIXED && ZSDS.FIXED) {
+    densy     <- Get.Densities(INT, bw = bw.est, from = Int.Beg,
+                               to = Int.End, Augment = Augment)
+    D.X.pre   <- densy[, 1]
+    Dens.pre  <- build.Dens(D.X.pre, ncp, zsds, df, CURVE.TYPE)
+    bar.width <- D.X.pre[2] - D.X.pre[1]
+    Dens.pre  <- Dens.pre / (rowSums(Dens.pre) * bar.width)
+  } else {
+    D.X.pre  <- NULL
+    Dens.pre <- NULL
+  }
+
+  ## ---- Point estimate ----
+  point.est <- old.fashioned(INT,
+                             Dens.precomputed = Dens.pre,
+                             D.X.precomputed  = D.X.pre,
+                             bw.est=.1,width = 1,
+                             NCP.FIXED = NCP.FIXED,
+                             ZSDS.FIXED = ZSDS.FIXED)
+ 
+  ## ---- Parallel bootstrap ----
+  cl <- parallel::makeCluster(ncores)
+  on.exit(parallel::stopCluster(cl), add = TRUE)
+
+  parallel::clusterExport(cl,
+    varlist = c(
+      # Functions
+      "old.fashioned", 
+      "build.Dens", 
+      "Get.Densities",
+      # Data
+      "INT",
+      # Parameters
+      "ncp", 
+      "zsds", 
+      "df", 
+      "bw.est",
+      "Int.Beg", 
+      "Int.End", 
+      "Augment",
+      "CURVE.TYPE", 
+      "fixed.false.positives",
+      # Plotting params
+      "x.lim.min", 
+      "x.lim.max", 
+      "ymin", 
+      "ymax",
+      "TESTING",
+      # Bootstrap-specific
+      "NCP.FIXED", 
+      "ZSDS.FIXED",
+      "Dens.pre", 
+      "D.X.pre"
+    ),
+    envir = environment()
+  )
+
+  invisible(parallel::clusterEvalQ(cl, library(KernSmooth)))
+  invisible(parallel::clusterEvalQ(cl, TESTING <- FALSE))
+  parallel::clusterSetRNGStream(cl, iseed = seed)
+
+  boot_res <- parallel::parLapply(cl, 1:boot.iter, function(i) {
+    boot_sample <- sample(INT, length(INT), replace = TRUE)
+    fit <- tryCatch(
+      old.fashioned(boot_sample,
+                    Dens.precomputed = Dens.pre,
+                    D.X.precomputed  = D.X.pre,
+                    bw.est = bw.est, width = width,
+                    NCP.FIXED  = NCP.FIXED,
+                    ZSDS.FIXED = ZSDS.FIXED)
+	,error = function(e) NULL )
+    fit
+  })
+
+  ## ---- Drop failed iterations ----
+  boot_res <- boot_res[!sapply(boot_res, is.null)]
+  if (length(boot_res) == 0) stop("All bootstrap iterations failed")
+
+  ## ---- Collect ----
+  boot.weights <- do.call(rbind, lapply(boot_res, `[[`, "weights"))
+  boot.ncp     <- do.call(rbind, lapply(boot_res, `[[`, "ncp"))
+  boot.zsds    <- do.call(rbind, lapply(boot_res, `[[`, "zsds"))
+  boot.fit     <- sapply(boot_res, `[[`, "fit")
+
+  ## ---- CIs ----
+  ci.fun <- function(mat, point) {
+    if (is.null(dim(mat))) mat <- matrix(mat, ncol = 1)
+    data.frame(
+      estimate = point,
+      lo95     = apply(mat, 2, quantile, 0.025),
+      hi95     = apply(mat, 2, quantile, 0.975))
+  }
+
+  list(
+    point  = point.est,
+    ci     = list(weights = ci.fun(boot.weights, point.est$weights),
+                  ncp     = ci.fun(boot.ncp,     point.est$ncp),
+                  zsds    = ci.fun(boot.zsds,    point.est$zsds)),
+    boot   = list(weights = boot.weights,
+                  ncp     = boot.ncp,
+                  zsds    = boot.zsds,
+                  fit     = boot.fit),
+    B.ok   = length(boot_res),
+    B      = B,
+    ncores = ncores
+  )
+}
+
+
+### NEW OLD FASHIONED
+
+run.new.OF <- function(val.input, boot.iter = 0, NCP.FIXED = TRUE, ZSDS.FIXED = TRUE,bw.est=.2) {
+
+    INT <- val.input[val.input > Int.Beg & val.input < Int.End]
+
+    ## ---- Precompute Dens if both fixed ----
+    if (NCP.FIXED && ZSDS.FIXED) {
+      densy     <- Get.Densities(INT, bw = bw.est, from = Int.Beg,
+                                 to = Int.End, Augment = Augment)
+      D.X.pre   <- densy[, 1]
+      Dens.pre  <- build.Dens(D.X.pre, ncp, zsds, df, CURVE.TYPE)
+      bar.width <- D.X.pre[2] - D.X.pre[1]
+      Dens.pre  <- Dens.pre / (rowSums(Dens.pre) * bar.width)
+    } else {
+      D.X.pre  <- NULL
+      Dens.pre <- NULL
+    }
+
+
+  ## ---- Point estimate ----
+  res.run <- old.fashioned(INT,
+                      Dens.precomputed = Dens.pre,
+                      D.X.precomputed  = D.X.pre,
+					bw.est = bw.est, width = width,
+                      NCP.FIXED  = NCP.FIXED,
+                      ZSDS.FIXED = ZSDS.FIXED)
+
+  cp.input <- list(
+    w.inp    = res.run$weights,
+    ncp.est  = res.run$ncp,
+    zsds.est = res.run$zsds
+  )
+
+  cp.res <- Compute.Power.Z.General(cp.input, Int.Beg = Int.Beg)
+
+  res.pe <- list(
+    EDR     = cp.res$EDR,
+    ERR     = cp.res$ERR,
+    ncp     = res.run$ncp,
+    zsds    = res.run$zsds,
+    w.inp   = res.run$weights,
+    w.sig   = cp.res$w.sig,
+    w.all   = cp.res$w.all,
+    local.power = cp.res$local.power,
+    fit     = res.run$fit
+  )
+
+  #res.pe
+
+  ######################
+  if (boot.iter > 0) {   #boot.iter = 50
+
+  #print("Do New OF bootstrap")
+
+    ## ---- Precompute Dens if both fixed ----
+    if (NCP.FIXED && ZSDS.FIXED) {
+      densy     <- Get.Densities(INT, bw = bw.est, from = Int.Beg,
+                                 to = Int.End, Augment = Augment)
+      D.X.pre   <- densy[, 1]
+      Dens.pre  <- build.Dens(D.X.pre, ncp, zsds, df, CURVE.TYPE)
+      bar.width <- D.X.pre[2] - D.X.pre[1]
+      Dens.pre  <- Dens.pre / (rowSums(Dens.pre) * bar.width)
+    } else {
+      D.X.pre  <- NULL
+      Dens.pre <- NULL
+    }
+
+    ## ---- Set up cluster ----
+    ncores <- max(1, parallel::detectCores() * .8)
+    cl <- parallel::makeCluster(ncores)
+    on.exit(parallel::stopCluster(cl), add = TRUE)
+
+    cat("Using", ncores, "cores\n")
+
+    parallel::clusterExport(cl,
+      varlist = c("old.fashioned", "build.Dens", "Get.Densities",
+                  "INT",
+                  "ncp", "zsds", "df", "bw.est",
+                  "Int.Beg", "Int.End", "Augment",
+                  "CURVE.TYPE", "fixed.false.positives",
+                  "x.lim.min", "x.lim.max", "ymin", "ymax",
+                  "bw.est",
+                  "NCP.FIXED", "ZSDS.FIXED",
+                  "Dens.pre", "D.X.pre"),
+      envir = environment())
+
+    invisible(parallel::clusterEvalQ(cl, library(KernSmooth)))
+    invisible(parallel::clusterEvalQ(cl, TESTING <- FALSE))
+    parallel::clusterSetRNGStream(cl, iseed = 42)
+
+    ## ---- Bootstrap ----
+    boot_res <- parallel::parLapply(cl, 1:boot.iter, function(i) {
+      boot_sample <- sample(INT, length(INT), replace = TRUE)
+      fit <- tryCatch(
+        old.fashioned(boot_sample,
+                     Dens.precomputed = Dens.pre,
+                     D.X.precomputed  = D.X.pre,
+                     bw.est = bw.est, width = width,
+                     NCP.FIXED  = NCP.FIXED,
+                     ZSDS.FIXED = ZSDS.FIXED)
+		,error = function(e) NULL
+      )
+      fit
+    })
+
+    #boot_res
+
+    ## ---- Drop failures ----
+    boot_res <- boot_res[!sapply(boot_res, is.null)]
+
+    ## ---- Reformat to match EM structure for Compute.Power.Z.General ----
+    boot_res <- lapply(boot_res, function(x) {
+      list(w.inp    = x$weights,
+           ncp      = x$ncp,
+           zsds     = x$zsds,
+           fit      = x$fit)
+    })
+
+	boot_res
+
+    ## ---- Compute power for each bootstrap result ----
+    boot_power <- lapply(boot_res, function(x)
+      Compute.Power.Z.General(x, Int.Beg = Int.Beg)
+    )
+
+    lcbind <- function(list1, list2) {
+      stopifnot(length(list1) == length(list2))
+      lapply(seq_along(list1), function(i) c(list1[[i]], list2[[i]]))
+    }
+    boot_list <- lcbind(boot_res, boot_power)
+
+    lquantile <- function(boot_list, probs = c(0.025, 0.975)) {
+      fields <- names(boot_list[[1]])
+    
+     result <- lapply(fields, function(f) {
+      vals <- lapply(boot_list, function(x) x[[f]])
+      if (all(sapply(vals, is.null))) return(NULL)
+      mat <- do.call(rbind, vals)
+      apply(mat, 2, quantile, probs = probs, na.rm = TRUE)
+    })
+  
+    names(result) <- fields
+    result[!sapply(result, is.null)]
+  }
+
+    get.ci <- function(boot_list, probs = c(0.025, 0.975)) {
+      ci <- lquantile(boot_list, probs = probs)
+    }
+
+    res.ci <- get.ci(boot_list)
+
+  } else {
+    components <- length(ncp)
+    res.ci <- list(
+      w.inp   = matrix(NA, 2, components),
+      w.all   = matrix(NA, 2, components),
+      w.sig   = matrix(NA, 2, components),
+      ncp     = matrix(NA, 2, components),
+      zsds    = matrix(NA, 2, components),
+      fit     = matrix(NA, 2, 1),
+      EDR     = matrix(NA, 2, 1),
+      ERR     = matrix(NA, 2, 1),
+      local.power = matrix(NA, 2, length(res.pe$local.power))
+    )
+  }
+
+  combine.pe.ci <- function(res.pe, res.ci) {
+    fields <- names(res.pe)
+    result <- lapply(fields, function(f) {
+      pe   <- res.pe[[f]]
+      ci_f <- res.ci[[f]]
+      if (is.null(dim(ci_f))) {
+        rbind(estimate = pe, ci_lb = ci_f[1], ci_ub = ci_f[2])
+      } else {
+        rbind(estimate = pe, ci_lb = ci_f[1, ], ci_ub = ci_f[2, ])
+      }
+    })
+    names(result) <- fields
+    result
+  }
+
+  zcurve.res <- combine.pe.ci(res.pe, res.ci)
+  zcurve.res$EDR[2] <- zcurve.res$EDR[2] - EDR.CI.adjust
+  zcurve.res$EDR[3] <- zcurve.res$EDR[3] + EDR.CI.adjust
+  zcurve.res$ERR[2] <- zcurve.res$ERR[2] - ERR.CI.adjust
+  zcurve.res$ERR[3] <- zcurve.res$ERR[3] + ERR.CI.adjust
+
+  return(zcurve.res)
+}
 
 ##############################################################
 ##############################################################
@@ -1002,112 +1438,11 @@ if (TESTING) {
 	round(w.inp,3)
 }
 
-
 ############################################
 ############################################
 ############################################
 
-get.ci.info = function(Est.Method = "EM") {
-
-#val.input = abs(c(rnorm(1000,1.1),rnorm(1000,2.8)))
-#boot.iter = 0
-
-if (Est.Method %in% c("OF","EM")) {
-
-#Int.Beg = 2
-zres = run.zcurve(val.input, Est.Method=Est.Method, alpha = alpha,boot.iter = boot.iter,
-	Int.Beg = Int.Beg, Int.End = Int.End,parallel=parallel)
-
-ODR = ODR.res
-ERR = summary(zres)$coefficients[1,];ERR
-EDR = summary(zres)$coefficients[2,];EDR
-FDR = (1/EDR - 1)*(alpha/(1-alpha));FDR
-FDR = FDR[c(1,3,2)];FDR
-
-# bootstrap selected weights (B x 7)
-Wboot <- zres$boot$weights
-
-pow_sel <- function(ncp, Int.Beg) {
-  pnorm(ncp, mean = Int.Beg) + pnorm(-ncp, mean = Int.Beg)  # Φ(ncp-c)+Φ(-ncp-c)
-}
-
-w_all_from_w_inp <- function(w_inp, ncp, Int.Beg) {
-  ps <- pow_sel(ncp, Int.Beg)
-  x  <- w_inp / ps
-  x / sum(x)
-}
-
-# bootstrap distribution of w.all
-w_all_boot <- t(apply(Wboot, 1, function(wrow) {
-  w_all_from_w_inp(wrow, ncp, Int.Beg)
-}))
-
-# point estimate from the fitted selected weights (replace with your object’s slot)
-w_inp_hat <- zres$fit$weights
-w_all_hat <- w_all_from_w_inp(w_inp_hat, ncp, Int.Beg)
-
-# percentile 95% CIs
-w_all_ci <- t(apply(w_all_boot, 2, quantile, probs = c(.025, .975), na.rm = TRUE))
-colnames(w_all_ci) <- c("low", "high")
-
-w.all = round(cbind(estimate = w_all_hat, w_all_ci), 3)
-w.all
-
-fit.val = summary(zres)$model$fit_index
-fit.val
-
-res.ci = list(
-	slope = slope,
-    ODR = ODR,
-    EDR = EDR,
-    ERR = ERR,
-    FDR = FDR,
-    ncp.est = ncp,
-    zsds.est = zsds,
-    w.all = w.all,
-	bias = bias,
-    fit = fit.val
-)
-
-#res.ci
-
-}
- 
-
-if (Est.Method == "EXT") {
-
-res.ext = EXT.boot(ZSDS.FIXED=ZSDS.FIXED)
-res.ext
-
-w.all.with.ci = cbind(results$w.all,res.ext[6:(5+components),1],
-		res.ext[6:(5+components),2])
-w.all.with.ci
-
-res.ci = list(
-	slope = slope,
-    ODR = ODR.res,
-    EDR = c(results$EDR,res.ext[1,]),
-    ERR = c(results$ERR,res.ext[2,]),
-    FDR = c(results$FDR,res.ext[3,]),
-    ncp.est = c(results$ncp,res.ext[4,]),
-    zsds.est = c(results$zsds,res.ext[5,]),
-    w.all = w.all.with.ci,
-	bias = bias,
-    fit = c(results$fit,res.ext[nrow(res.ext),])
-)
-
-#res.ci
-
-}
-
-return(res.ci)
-
-}
-
-#######################################################################
-
-
-Write.Local.Power = function(loc.power) {
+Write.Local.Power = function(local.power) {
 
   if (int.loc == 0) return(invisible(NULL))
 
@@ -1115,8 +1450,7 @@ Write.Local.Power = function(loc.power) {
   midpoints = seq(x.lim.min, x.lim.max - int.loc, by = int.loc) + int.loc / 2
 
   # Format labels
-  lab = paste0(round(loc.power * 100), "%")
-#  lab = paste0(format(round(loc.power * 100), nsmall = 0), "%")
+  lab = paste0(round(local.power * 100), "%")
 
   # Add bottom margin for the extra label row
   old_mar = par("mar")
@@ -1263,10 +1597,7 @@ hist(c(0),main="",ylim=c(ymin,ymax),ylab="",xlab="",xlim=c(x.lim.min,x.lim.max),
 
 	if (Write.CI) {
 
-
-	if (is.na(bias[3])) TEST4BIAS = FALSE
-
-	if(TEST4BIAS) { 
+	if(TEST4BIAS & !is.null(bias) ) {
 		if (bias[3] < .00005) { bias.res = "EJS, p < .0001" } else {  
 			bias.res = paste0("EJS, p = ",sub("^0","",formatC(bias[3],format="f",digits=4))) }
 		bias.res
@@ -1349,9 +1680,7 @@ hist(c(0),main="",ylim=c(ymin,ymax),ylab="",xlab="",xlim=c(x.lim.min,x.lim.max),
 	ERR = results$ERR[1]*100;EDR
 	FDR = results$FDR[1]*100;FDR
 
-	if (is.na(results$bias[3])) TEST4BIAS = FALSE
-
-	if(TEST4BIAS) { 
+	if(TEST4BIAS & !is.null(bias) ) { 
 		if (results$bias[3] < .00005) { bias.res = "EJS, p < .0001" } else { 
 			bias.res = paste0("EJS, p = ",sub("^0","",formatC(bias[3],format="f",digits=4))) }
 		bias.res
@@ -1380,8 +1709,6 @@ hist(c(0),main="",ylim=c(ymin,ymax),ylab="",xlab="",xlim=c(x.lim.min,x.lim.max),
 	text(results.x,y.text-y.line*i,
 		paste("FDR:",FDR.string,"%"),
 		pos=2,cex=letter.size.1) 
-
-	if (is.na(bias[3])) TEST4BIAS = FALSE
 
 	if(TEST4BIAS) {
 		i = i + 2
@@ -1417,11 +1744,8 @@ abline(h=0)
 
 
 } # End of Histogram
- 
-######################################### 
-######################################### 
-######################################### 
 
+ 
 ######################################### 
 ######################################### 
 ######################################### 
@@ -1442,7 +1766,7 @@ Draw.KD = function(z.draw,w,Write.CI=FALSE,cola="blue",Lwidth=5) {
 	summary(z.draw)
 
 	d.all = Get.Densities(z.draw[z.draw >= x.lim.min & z.draw < x.lim.max],
-		bw=bw.draw,d.x.min=x.lim.min,d.x.max=x.lim.max,Augment=Augment)
+		bw=bw.draw,from=x.lim.min,to=x.lim.max,Augment=Augment)
 	summary(d.all)
 	bar.width = d.all[2,1] - d.all[1,1];bar.width
 	d.all = d.all[d.all[,1] > x.lim.min & d.all[,1] <= x.lim.max,]
@@ -1456,7 +1780,7 @@ Draw.KD = function(z.draw,w,Write.CI=FALSE,cola="blue",Lwidth=5) {
 	summary(z.draw)
 
 	d.sig = Get.Densities(z.draw[z.draw >= Int.Beg & z.draw < x.lim.max],
-		bw=bw.draw,d.x.min=Int.Beg,d.x.max=x.lim.max,Augment=Augment)
+		bw=bw.draw,from=Int.Beg,to=x.lim.max,Augment=Augment)
 	
 	bar.width = d.sig[2,1] - d.sig[1,1];bar.width
 
@@ -1491,14 +1815,14 @@ Draw.KD = function(z.draw,w,Write.CI=FALSE,cola="blue",Lwidth=5) {
 	par(new=TRUE)
 	plot(d.sig.X[d.sig.X > Int.Beg +.05 & d.sig.X < x.lim.max - .05],
 		d.sig.Y[d.sig.X > Int.Beg + .05 & d.sig.X < x.lim.max - .05],
-		type="l",col=adjustcolor(cola, alpha.f = 0.4),lty=1,lwd=Lwidth,
+		type="l",col=adjustcolor(cola, alpha.f = 0.8),lty=2,lwd=Lwidth,
 		xlim =c(x.lim.min,x.lim.max),ylim=c(ymin,ymax),xlab="",ylab="",
 		axes=FALSE)
 	### draw vertical line for Beginning
 
 	Int.Beg
-	height = max(d.sig.Y[which(round(d.sig.X,1) == round(Int.Beg+.02,1))]);height
-	segments(Int.Beg+.02,0,Int.Beg+.02,height,lty=1,lwd=3,col=cola)
+	#height = max(d.sig.Y[which(round(d.sig.X,1) == round(Int.Beg+.02,1))]);height
+	#segments(Int.Beg+.02,0,Int.Beg+.02,height,lty=1,lwd=3,col=cola)
 
 
 
@@ -1512,26 +1836,29 @@ Draw.KD = function(z.draw,w,Write.CI=FALSE,cola="blue",Lwidth=5) {
 
 
 ###################################################
-#### Begin Draw Zcurve
+#### Begin Draw Curve
 ###################################################
 
-
-Draw.Curve.All = function(w,cola="black",Lwidth=4,
+Draw.Curve.All = function(results,cola="black",Lwidth=4,
 	Ltype=1,x.start=x.lim.min,x.end=x.lim.max) {
 
 
-#Draw.Histogram()
+#x.start = x.lim.min; x.end = x.lim.max;cola = "black";Lwidth=4;Ltype=1
+
+ncp = results$ncp[1,]
+zsds = results$zsds[1,]
+w = results$w.all[1,]
+
+width = 1
 
 bar.width = .01
-D.X = seq(x.lim.min,x.lim.max,bar.width)
+D.X = seq(x.lim.min,x.lim.max,bar.width) 
 
-if (CURVE.TYPE == "z") {
-  Dens = get.z.density(D.X)
-} else {
-  Dens = get.t.density(D.X)
-}
+D.Y = build.Dens(D.X, ncp, zsds, df, CURVE.TYPE) 
+D.Y = D.Y / (rowSums(D.Y) * bar.width)
+D.Y = colSums(D.Y * w)
 
-D.Y = colSums(Dens*w)
+#plot(D.X,D.Y)
 
 d.dense.sel = sum(D.Y[D.X > x.lim.min & D.X >= Int.Beg]*bar.width)
 d.dense.sel
@@ -1553,8 +1880,6 @@ OFS
 
 OPJS = OFJS/OFS
 OPJS
-
-
 
 scale = d.hist.sel/d.dense.sel;scale
 
@@ -1592,538 +1917,14 @@ if (Show.Significance) {
 
 
 ###################################################
-#### Begin Draw Zcurve SDG1
 ###################################################
-
-Draw.Curve.All.SDG1 = function(w.inp,ncp=ncp,zsds=zsds,cola=col.curve,
-	Ltype=1,Lwidth=4,x.start=x.lim.min,x.end=x.lim.max) {
-
-
-#results$w.inp
-if(length(w.inp) > components) w.inp = w.inp[1,]
-if(length(ncp) > components) ncp = ncp[1,]
-if(length(zsds) > components) zsds = zsds[1,]
-
-components = length(ncp)
-
-if (components == 1) { 
-	D.X = seq(x.lim.min,x.lim.max,.01)
-	if (CURVE.TYPE == "z") {
-		D.Y = dnorm(D.X,ncp,zsds)
-	} else {
-		D.Y = dt(D.Y,df,ncp)
-	}
-	d.sim = cbind(D.X,D.Y)
-} else {
-    print("WARNING NOT SUPPOSED TO DO THIS")
-    print(components)
-    print(w.inp)
-    print(k.sim)
-    print(ncp)
-    print(zsds)
-}
-dim(d.sim)
-
-bar.width = d.sim[2,1] - d.sim[1,1];bar.width
-d.sim = d.sim[d.sim[,1] > x.lim.min & d.sim[,1] <= x.lim.max,]
-dim(d.sim)
-d.sim[,2] = d.sim[,2]/(sum(d.sim[,2])*bar.width)
-sum(d.sim[,2])*bar.width
-
-d.sim.X = d.sim[,1]
-d.sim.Y = d.sim[,2]
-
-#plot(d.sim.X,d.sim.Y,ylim=c(ymin,ymax))
-
-summary(d.sim.X)
-sum(d.sim.Y*bar.width)
-
-d.hist.sel = mean(as.numeric(val.input > x.lim.min & val.input > Int.Beg & val.input < Int.End)) /
-	mean(as.numeric(val.input > x.lim.min & val.input < Int.End))
-d.hist.sel
-
-d.dense.sel = sum(d.sim.Y[d.sim.X > x.lim.min & d.sim.X >= Int.Beg]*bar.width)
-d.dense.sel
-
-scale = d.hist.sel/d.dense.sel;scale
-
-lines(d.sim.X[which(d.sim.X >= x.start & d.sim.X < x.end)],
-	d.sim.Y[which(d.sim.X >= x.start & d.sim.X < x.end)]*scale,
-	lty=Ltype,col=cola,lwd=Lwidth,xlim=c(x.lim.min,x.lim.max)
-	,ylim=c(ymin,ymax))
-
-
-if (Show.Significance) {
-
-	if (length(sig.levels) == 0) sig.levels = alpha
-
-		cz.alpha = -qnorm(sig.levels/2);cz.alpha
-		if(two.sided == FALSE) cz.alpha = c(-cz.alpha,cz.alpha);cz.alpha
-
-		sig.lty = rep(2,length(cz.alpha));sig.lty
-
-		i = 1
-		for (i in 1:length(cz.alpha)) {
-			cz.alpha[i]
-			height = max(d.sim.Y[which(round(d.sim.X,1) == round(cz.alpha[i],1))]);height
-			segments(cz.alpha[i],0,cz.alpha[i],height,lty=sig.lty,lwd=2,col="firebrick3")
-		}
-
-} # End of Show.Significance
-
-
-
-} # End of Draw.Curve.SDG1
-
 ###################################################
-
-
-
-
-##############################################
-### Get Densities
-##############################################
-
-Get.Densities = function(INT,bw="nrd0",d.x.min=0,d.x.max=6,Augment=TRUE) {
-
-### find the maximum z-score. This is only needed if the maximum z-score is below Int.End
-max.z = Int.End
-if (max(INT) < d.x.max) max.z = max(INT)
-max.z
-
-if(Augment.Regression & slope[1] > 20 & Int.Beg > 1) { 
-	Augment.Factor = 1 - d.reg;Augment.Factor
-} 
-
-### Augment z-scores on the left side of Interval to avoid downward trend 
-### of kernal density function (assumes values go to 0)
-
-if (Augment == TRUE) { 
-
-	AUG = c()
-	n.AUG = round(Augment.Factor*length(INT[INT > d.x.min & INT < d.x.min+bw.aug]));n.AUG
-	if (n.AUG > 0) AUG = seq(d.x.min-bw.aug,d.x.min,bw.aug/n.AUG)
-
-	Z.INT.USE = c(INT,AUG)
-
-} else {
-	Z.INT.USE = INT[INT > d.x.min & INT <= max.z]
-}
-
-Z.Density = bkde(Z.INT.USE,bandwidth=bw,range=c(d.x.min-bw.aug,d.x.max)) 
-val.max = d.x.max
-D = data.frame(Z.Density$x,Z.Density$y)
-colnames(D) = c("ZX","ZY")
-#plot(D$ZX,D$ZY);abline(v=d.x.min)
-
-
-D = D[D$ZX > d.x.min & D$ZX < val.max,]
-dim(D)
-#plot(D$ZX,D$ZY)
-
-bar.width = D$ZX[2] - D$ZX[1]
-D$ZY = D$ZY/(sum(D$ZY*bar.width)) 
-sum(D$ZY*bar.width)
-
-return(D)
-
-
-}  ### End of Get Densities 
-
-
-#######################################################
-### End of Get Densities
-#######################################################
-
-
-
-#######################################################
-### Old Fashioned Density Method
-#######################################################
-
-#weight = startval
-
-old.fashioned = function(val.input,cola = "springgreen2") {
-
-curve.fitting = function(theta,RetEst=FALSE)    {
-
-### get the weights and rescale 
-weight = theta
-weight = weight/sum(weight)
-
-if (fixed.false.positives > 0) weight = c(fixed.false.positives,weight*(1-fixed.false.positives))
-sum(weight)
-
-### compute the new estimated density distribution
-E.D.Y = colSums(Dens*weight)
-
-### compare to observed density distribution
-rmse = sqrt(mean((E.D.Y-O.D.Y)^2))
-
-### return either fit if continue or estimates if finished
-value = rmse
-if(RetEst) value = E.D.Y
-
-
-### showing the fitting of the function in a plot
-if(Plot.Fitting) {
-
-	rval = runif(1)
-	if (rval > .9) {
-
-	tit = ""
-	xL = ""
-	yL = ""
-	plot(D.X,O.D.Y*scale,type='l',
-		xlim=c(x.lim.min,x.lim.max),ylim=c(ymin,ymax),
-		main=tit,xlab=xL,ylab=yL,axes=FALSE)
-	lines(D.X,E.D.Y*scale,lty=1,col="red1",
-		xlim=c(x.lim.min,x.lim.max),ylim=c(ymin,ymax),axes=FALSE)
-	#points(D.X,z.est,pch=20,col="red1",ylim=c(0,ymax),)
-
-	}
-
-} ### End of Plot Fitting
-
-### return value to optimization function
-return(value)
-
-} ### End of curve.fitting
-
-############################
-#### End of Fitting Function
-############################
-
-components = length(ncp)
-
-### get the densities for each interval and each non-centrality parameter
-
-INT = val.input[val.input >= Int.Beg & val.input <= Int.End]
-
-densy = Get.Densities(INT,bw=bw.est,d.x.min=Int.Beg,d.x.max=Int.End,Augment=Augment)
-
-D.X = densy[,1]
-O.D.Y = densy[,2]
-
-#plot(D.X,O.D.Y,type="l")
-
-n.bars = length(D.X)
-
-bar.width = D.X[2] - D.X[1]
-bar.width
-
-### Finish getting observed densities 
-
-Dens	= c()
-for(i in 1:n.bars) {
-	for (j in 1:length(ncp)) {
-		if (CURVE.TYPE == "z") {
-			Dens = c(Dens,
-			dnorm(D.X[i],ncp[j],zsds[j]) +
-			dnorm(-D.X[i],ncp[j],zsds[j])
-			)
-		} else {
-			Dens = c(Dens,
-			dt(D.X[i],df,ncp[j]) +
-			dt(-D.X[i],df,ncp[j])
-			)
-		}
-	}
-}
-summary(Dens)
-Dens = matrix(Dens,length(ncp),byrow=FALSE)
-sum.dens = rowSums(Dens)
-Dens = Dens/(sum.dens * bar.width)
-dim(Dens)
-
-startval = rep(1/(components),components)
-#startval[1] = 1
-startval = startval/sum(startval)
-startval
-
-lowlim = c(rep(0,components),ncp,zsds);lowlim
-highlim = c(rep(1,components),ncp,zsds);highlim
-
-if (fixed.false.positives > 0 & 0 %in% ncp) {
-  startval = rep(1/(components-1),components-1)
-  lowlim = c(rep(0,components-1),ncp,zsds);lowlim
-  highlim = c(rep(1,components-1),ncp,zsds);highlim
-}
-
-
-d.hist.sel = mean(as.numeric(val.input > x.lim.min & val.input > Int.Beg & val.input < Int.End)) /
-	mean(as.numeric(val.input > x.lim.min & val.input < Int.End))
-d.hist.sel
-
-scale = d.hist.sel
-
-#TESTING = TRUE
-if (TESTING) Plot.Fitting = TRUE else Plot.Fitting = FALSE
-
-
-auto = nlminb(startval,curve.fitting,lower=lowlim,upper=highlim,
-	control=list(eval.max=1000,abs.tol = 1e-20))
-
-fit = auto$objective;fit
-
-### get the estimated weights 
-WT = auto$par
-WT = WT/sum(WT)
-if (fixed.false.positives > 0) WT = c(fixed.false.positives,WT*(1-fixed.false.positives))
-sum(WT)
-
-res = c(WT,fit);res
-
-return(res)
-
-} ### End of old.fashioned
-
-######################################################
-### End of Old Fashioned Density Method
-#######################################################
 
 
 
 #########################################################################
 ### This Function Computes Power from Weights and Non-Centrality Parameters
 #########################################################################
-
-Compute.Power.Z.Old = function(cp.input,Int.Beg=crit) {
-
-crit = qnorm(alpha/2,lower.tail=FALSE)
-
-ext.all = length(val.input[val.input > Int.End]) / 
-	length(val.input)
-ext.all
-
-ext.sig = length(val.input[val.input > Int.End]) / 
-	length(val.input[val.input > crit])
-ext.sig
-
-ext.inp = length(val.input[val.input > Int.End]) / 
-	length(val.input[val.input > Int.Beg])
-ext.inp
-
-w.inp = cp.input$w.inp
-
-ncp = cp.input$ncp
-zsds = cp.input$zsds
-
-components = length(ncp)
-
-### get power values for the components (ncp)
-pow.dir = pnorm(abs(ncp),crit);pow.dir 
-
-### get the opposite sign probability
-sign.error = 1-pnorm(ncp,-crit);round(sign.error,3)
-
-pow = pow.dir + sign.error
-pow.ext = c(pow,1)
-
-pow.sel = pnorm(ncp,Int.Beg) + pnorm(-ncp,Int.Beg);pow.sel
-pow.sel.ext = c(pow.sel,1)
-
-w.inp.ext = c(w.inp*(1-ext.inp), ext.inp)          # estimated weights
-
-w.all.ext   <- (w.inp.ext + w.inp.ext*(1-pow.sel.ext)
-   /(pow.sel.ext)) / sum(w.inp.ext + w.inp.ext*(1-pow.sel.ext)
-   /(pow.sel.ext))
-
-EDR = sum(w.all.ext*pow.ext);EDR
-
-w.sig.ext = w.all.ext * pow.ext
-w.sig.ext = w.sig.ext / EDR
-sum(w.sig.ext)
-
-pow.dir.ext = c(pow.dir,1)
-
-w.all = w.all.ext[1:components]
-w.sig = w.sig.ext[1:components]
-
-
-ERR = sum(w.sig.ext*pow.dir.ext);ERR
-
-if (ERR > 1) ERR = 1
-if (EDR > 1) EDR = 1
-
-if (ERR < alpha/2) ERR = alpha/2
-if (EDR < alpha) EDR = alpha 
-
-
-ERR.pos = NA
-ERR.neg = NA
-
-EDR.pos = NA
-EDR.neg = NA
-
-
-### now we compute mean power as a function of z-scores continuously
-### this is only performed if local power is requested (int.loc > 0)
-
-local.power = NA
-
-if (int.loc > 0) {
-
-	bar.width = .01 # how fine should be the resolution
-	X = seq(x.lim.min,Int.End,bar.width);summary(X)	 # set of z-scores 
-
-	W.D.Sum = unlist(lapply(X,function(x) sum(dnorm(x,ncp)*w.all) ))
-	#plot(Z.X,Z.W.D.Sum)
-
-	loc.p = unlist(lapply(X,function(x) 
-		sum(dnorm(x,ncp)*w.all*(pow.dir+sign.error)) /	sum(dnorm(x,ncp)*w.all)	))
-
-	int = seq(x.lim.min,x.lim.max,int.loc)
-	local.power = c()
-	i = 1
-	for (i in 1:(length(int)-1)) local.power = c(local.power,
-		sum(loc.p[X > int[i] & X < int[i+1]]*
-			W.D.Sum[X > int[i] & X < int[i+1]])/
-		sum(W.D.Sum[X > int[i] & X < int[i+1]])	 )		
-
-	local.power
-	names(local.power) = paste0("lp.",1:length(local.power))
-}
-
-local.power
-
-res = list(
-   EDR = EDR,
-   ERR = ERR,
-   w.sig = w.sig,
-   w.all = w.all,
-   loc.pow = local.power
-)
-
-### to be past back to the main program from this function
-return(res)
-
-}
-
-### Finish Compute.Power.Z
-
-#####################################
-#####################################
-#####################################
-
-Compute.Power.T = function(para,Int.Beg=crit,BOOT=FALSE) {
-
-#para = para.est.OF
-
-t.crit = qt(1-alpha/2,df);t.crit
-
-t.ext.all = length(val.input[val.input > Int.End]) / 
-	length(val.input)
-t.ext.all
-
-t.ext.sig = length(val.input[val.input > Int.End]) / 
-	length(val.input[val.input > crit])
-t.ext.sig
-
-t.ext.inp = length(val.input[val.input > Int.End]) / 
-	length(val.input[val.input > Int.Beg])
-t.ext.inp
-
-w.inp = para[1:components]
-nct = para[(1+components):(2*components)]
-
-### get power values for the components (ncp)
-pow.dir = pt(t.crit,df,nct,lower.tail=FALSE);pow.dir 
-
-### get the opposite sign probability
-sign.error = pt(-t.crit,df,nct,lower.tail=TRUE);round(sign.error,3)
-
-pow = pow.dir + sign.error
-pow.ext = c(pow,1)
-
-pow.sel = pt(Int.Beg,df,nct,lower.tail=FALSE) + pt(-Int.Beg,df,nct);pow.sel
-pow.sel.ext = c(pow.sel,1)
-pow.sel
-
-w.inp.ext = c(w.inp*(1-t.ext.inp), t.ext.inp)          # estimated weights
-w.inp.ext
-
-w.all.ext   <- (w.inp.ext + w.inp.ext*(1-pow.sel.ext)
-   /(pow.sel.ext)) / sum(w.inp.ext + w.inp.ext*(1-pow.sel.ext)
-   /(pow.sel.ext))
-
-EDR = sum(w.all.ext*pow.ext);EDR
-
-w.sig.ext = w.all.ext * pow.ext
-w.sig.ext = w.sig.ext / EDR
-sum(w.sig.ext)
-
-pow.dir.ext = c(pow.dir,1)
-
-w.all = w.all.ext[1:components]
-w.sig = w.sig.ext[1:components]
-
-ERR = sum(w.sig.ext*pow.dir.ext);ERR
-
-if (ERR > 1) ERR = 1
-if (EDR > 1) EDR = 1
-
-if (ERR < alpha/2) ERR = alpha/2
-if (EDR < alpha) EDR = alpha 
-
-
-ERR.pos = NA
-ERR.neg = NA
-
-EDR.pos = NA
-EDR.neg = NA
-
-res.est = c(EDR,EDR.pos,EDR.neg,ERR,ERR.pos,ERR.neg)
-res.est
-res = c(res.est,w.all,w.sig)
-names(res) = c("EDR","EDR.pos","EDR.neg","ERR","ERR.pos","ERR.neg",
-paste0("w.all.",ncp[1:components]),paste0("w.sig",ncp[1:components]) )
-res
-
-
-local.power <- c()
-for (i in 1:(length(int)-1)) {
-  segment <- (ncp.grid >= int[i]) & (ncp.grid < int[i+1])
-  denom <- sum(dd[segment])
-  local.power <- c(local.power, if (denom == 0) NA else sum(power[segment] * dd[segment]) / denom)
-}
-
-local.power = NA
-
-if (int.loc > 0) {
-
-	bar.width = .01 # how fine should be the resolution
-	Z.X = seq(x.lim.min,Int.End,bar.width);summary(Z.X)	 # set of z-scores 
-
-	Z.W.D.Sum = unlist(lapply(Z.X,function(x) sum(dt(x,df,ncp)*w.all) ))
-	#plot(Z.X,Z.W.D.Sum)
-
-	loc.p = unlist(lapply(Z.X,function(x) 
-		sum(dt(x,df,ncp)*w.all*(pow.dir+sign.error)) /	
-			sum(dt(x,df,ncp)*w.all)	))
-
-	loc.p
-	int = seq(x.lim.min,x.lim.max,int.loc)
-	local.power = c()
-	i = 1
-	for (i in 1:(length(int)-1)) local.power = c(local.power,
-		sum(loc.p[Z.X > int[i] & Z.X < int[i+1]]*
-			Z.W.D.Sum[Z.X > int[i] & Z.X < int[i+1]])/
-		sum(Z.W.D.Sum[Z.X > int[i] & Z.X < int[i+1]])	 )		
-
-	local.power
-	names(local.power) = paste0("lp.",1:length(local.power))
-	res = c(res,local.power)
-}
-
-return(res)
-
-} # EOF Compute.Power.T
-
-
-#####################################
-#####################################
-#####################################
 
 ### Claude.26.03.14
 
@@ -2176,7 +1977,9 @@ Compute.Power.Z.Discrete = function(cp.input, Int.Beg = 1.96) {
 
 #####
 
-if (int.loc > 0) {
+  local.power = NULL
+
+  if (int.loc > 0) {
 
   X     = seq(x.lim.min, Int.End, by = 0.01)
 
@@ -2200,17 +2003,19 @@ if (int.loc > 0) {
 
 } ### end local power
 
-local.power
-
 ####
 
-  return(list(
+out = (list(
     EDR     = EDR,
     ERR     = ERR,
     w.all   = w.all.ext[1:components],
     w.sig   = w.sig.ext[1:components],
-    loc.pow = local.power
+    local.power = local.power
   ))
+
+
+out
+
 
 } ### EOF Compute.Power.Z.Discrete
 
@@ -2225,7 +2030,7 @@ Compute.Power.Z.Continuous = function(cp.input, Int.Beg) {
 
   components = length(cp.input$ncp)
   ncp        = round(cp.input$ncp, deci)
-  ncp.sd     = max(1, sqrt(cp.input$zsds^2 - 1))
+  ncp.sd     = sqrt(cp.input$zsds^2 - 1)
 
   # Floor ncp.sd at grid step to prevent underflow
   ncp.sd = max(zx.bw, ncp.sd)
@@ -2263,7 +2068,6 @@ Compute.Power.Z.Continuous = function(cp.input, Int.Beg) {
   ERR
 
 
-  # Local power
   local.power = NULL
 
 if (int.loc > 0) {
@@ -2296,25 +2100,26 @@ if (int.loc > 0) {
 
 } ### end local power
 
-  local.power
-
-  return(list(
+  out = list(
     EDR     = EDR,
     ERR     = ERR,
     w.all   = w.all,
-    loc.pow = local.power
-  ))
+    local.power = local.power
+  )
+
+out
 
 } ### EOF Compute.Power.Z.Continuous
 
 #####
 
 Compute.Power.Z.General = function(cp.input, Int.Beg = 1.96) {
-  if (max(cp.input$zsds) < 1.01) {
+  if (max(as.numeric(cp.input$zsds)) < 1.01) {
     Compute.Power.Z.Discrete(cp.input, Int.Beg)
   } else {
     Compute.Power.Z.Continuous(cp.input, Int.Beg)
   }
+
 }
 
 
@@ -2322,7 +2127,8 @@ Compute.Power.Z.General = function(cp.input, Int.Beg = 1.96) {
 #####################################
 #####################################
 
-
+#For quick testing
+#val.input = rnorm(1000,2,2)
 
 #####################################
 ### BB ZingStart #START #Begin of Main Program 
@@ -2405,7 +2211,7 @@ names(extreme) = c("Ext.Neg","Ext.Pos")
 (extreme*100)
 
 
-slope = slope_adj(val.input)
+slope = get_slope(INT)
 slope
 
 w_start = NULL
@@ -2419,214 +2225,54 @@ w_start = NULL
 ###############################################
 ###############################################
 
+### NEW OLD FASHIONED Z-CURVE 
 
-### OLD FASHIONED Z-CURVE 
-
-### run always to get starting values, unless one component model
-
-if(components > 1 & ZSDS.FIXED == TRUE & NCP.FIXED == TRUE) {
-
-#summary(val.input)
-para.est.OF = old.fashioned(val.input)
-
-fit = para.est.OF[components+1];fit
-
-cp.input  = list(
-	w.inp = para.est.OF[1:components],
-	ncp.est = ncp,
-	zsds.est = zsds
-)
-
-
-if (CURVE.TYPE == "z") {
-  cp.res = Compute.Power.Z.General(cp.input,Int.Beg=Int.Beg)
-} else {
-  cp.res = Compute.Power.T(cp.input,Int.Beg=Int.Beg)
-}
-
-EDR = cp.res$EDR;EDR
-ERR = cp.res$ERR;ERR
-
-FDR = (1/EDR - 1)*(alpha/(1-alpha))
-
-w.all = cp.res$w.all
-
-w.sig = cp.res$w.sig
-
-loc.power = cp.res$loc.pow
-
-bias = c(NA,NA,NA)
-if(TEST4BIAS) { 
-	bias = test.bias(w.all) 
-}
-names(bias) = c("OBS.JS","EXP.JS","EJS.p")
-
-results = list(
-	slope = slope,
-	ODR = ODR,
-	EDR = EDR,
-	ERR = ERR,
-	FDR = FDR,
-    ncp = cp.input$ncp.est,
-    zsds = cp.input$zsds.est,
-    w.all = w.all,
-    bias = bias,
-    fit = fit
-  )
-
-floor = .1
-w_from_density <- cp.input$w.inp
-w_start <- w_from_density + 0.1  # small floor
-w_start <- w_start / sum(w_start)  # renormalize
-w_start
-
-
-#print(results)
-
+if (Est.Method == "OF") {
+	res = run.new.OF(val.input,boot.iter = boot.iter,bw=bw.est,NCP.FIXED,ZSDS.FIXED)
 } # EOF Est.Method OF
- 
 
-
-##########################################################
-
- 
-### if requested, run slower EM
-### Est.Method = "EM"
+### NEW EM Z-Curve 
 if(Est.Method == "EM") {
 
+	cp.input = run.new.OF(val.input,boot.iter = 0)
+
+	floor = .1
+	w_from_density <- cp.input$w.inp[1,]
+	w_start <- w_from_density + 0.1  # small floor
+	w_start <- w_start / sum(w_start)  # renormalize
+	w_start
+
 	components = length(ncp)	
-	#summary(val.input)
-	#Int.Beg = 2.4; alpha = .005
 
-	res.em = run.zcurve(val.input,Est.Method="EM",boot.iter=boot.iter,alpha=alpha,
-		Int.Beg=Int.Beg,Int.End=Int.End,parallel=parallel)
+	res = run.new.EM(val.input,w_start,boot.iter,NCP.FIXED,ZSDS.FIXED)
 
-	res.em
-
-	fit = res.em$fit$Q
-	fit
-
-	w.inp = res.em$fit$weights
-
-	cp.input  = list(
-		w.inp = res.em$fit$weights,
-		ncp.est = ncp,
-		zsds.est = zsds
-	)
-
-	cp.input
-
-	cp.res = Compute.Power.Z.General(cp.input,Int.Beg=Int.Beg)
-	cp.res
-
-
-	summary(res.em)     
-
-	EDR = cp.res$EDR;EDR
-	ERR = cp.res$ERR;ERR
-
-	w.all = cp.res$w.all
-
-	w.sig = cp.res$w.sig
-
-	loc.power = cp.res$loc.pow
-
-	FDR = (1/EDR - 1)*(alpha/(1-alpha));FDR
-
-bias = c(NA,NA,NA)
-if(TEST4BIAS) { 
-	bias = test.bias(w.all) 
 }
-names(bias) = c("OBS.JS","EXP.JS","EJS.p")
 
+
+res$FDR = (1/res$EDR - 1)*(alpha/(1-alpha))
+
+bias = NULL
+if(TEST4BIAS) { 
+  bias = test.bias(w.all) 
+  namees(bias) = c("OBS.JS","EXP.JS","EJS.p")
+}
 
 results = list(
-	slope = slope,
-    ODR = ODR,
-	EDR = EDR,
-	ERR = ERR,
-	FDR = FDR,
-    ncp = cp.input$ncp.est,
-    zsds = cp.input$zsds.est,
-    w.all = w.all,
-    bias = bias,
-    fit = fit
-  )
-
-
-#results
-
-
-} 
-
-
-#####################################################
-#####################################################
-#####################################################
-
-### Est.Method = "NEW" ### New EM algorithm
-if(Est.Method == "NEW") {
-
-	components = length(ncp)	
-
-	res.new = run.new.zcurve(val.input,w_start,NCP.FIXED,ZSDS.FIXED)
-
-	res.new
-
-	w.inp = res.new$w.inp[1,]
-
-	EDR = res.new$EDR[1];EDR
-	ERR = res.new$ERR[1];ERR
-
-	FDR = (1/res.new$EDR - 1)*(alpha/(1-alpha))
-	FDR = FDR[c(1,3,2)]
-
-	w.all = if (is.null(dim(res.new$w.all))) res.new$w.all else res.new$w.all[1,]
-
-	loc.power = if (is.null(dim(res.new$loc.pow))) res.new$loc.power else res.new$loc.pow[1,]
-
-	bias = c(NA,NA,NA)
-	if(TEST4BIAS) { 
-		bias = test.bias(w.all) 
-	}
-
-
-	names(bias) = c("OBS.JS","EXP.JS","EJS.p")
-
-	results.new = list(
 		slope = slope,
 		ODR = ODR.res,
-		EDR = res.new$EDR,
-		ERR = res.new$ERR,
-		FDR = FDR,
-		ncp = res.new$ncp,
-		zsds = res.new$zsds,
-		w.inp = res.new$w.inp,
-		w.all = res.new$w.all,	
+		EDR = res$EDR,
+		ERR = res$ERR,
+		FDR = res$FDR,
+		ncp = res$ncp,
+		zsds = res$zsds,
+		w.inp = res$w.inp,
+		w.all = res$w.all,	
+		local.power = res$local.power,
 		bias = bias,
-		fit = res.new$loglik
+		fit = res$fit
 	  )
 
-	results = list(
-		slope = slope,
-		ODR = ODR.res,
-		EDR = res.new$EDR[1],
-		ERR = res.new$ERR[1],
-		FDR = FDR[1],
-		ncp = res.new$ncp[1,1],
-		zsds = res.new$zsds[1,1],
-		w.all = res.new$w.all[1,1],	
-		bias = bias,
-		fit = res.new$loglik[1,1]
-	  )
 
-	results = results.new
-
-
-} 
-
-#results
-#results.new
 
 ####################################################################
 
@@ -2659,8 +2305,8 @@ if (Est.Method %in% c("CLU", "CLU-W","CLU-B") & boot.iter >= 0) {
 	round(w.all,3)
 	sum(w.all)
 
-	loc.power = cp.res[which(substring(names(cp.res),1,2) == "lp")]
-	round(loc.power,3)
+	local.power = cp.res[which(substring(names(cp.res),1,2) == "lp")]
+	round(local.power,3)
 
 	#str(summary(z.clu))
 
@@ -2671,103 +2317,35 @@ if (Est.Method %in% c("CLU", "CLU-W","CLU-B") & boot.iter >= 0) {
 } # EOF Cluster Method 
 
 
-########################################################## 
-
-
 
 ##########################################
 ### This Code is Used to Create Graphic
 ##########################################
 
-#CCC
+if (Show.Histogram) {
 
-if (Show.Histogram & sum(extreme,na.rm=TRUE) < .95) { 
+	if (boot.iter == 0) {
+		#print("Draw Histogram NO CI")
+		Draw.Histogram(results$w.all[1,],cola=col.hist,Write.CI = FALSE)
+	} else {
+		#print("Draw Histogram WITH CI")
+		Draw.Histogram(results$w.all[1,],cola=col.hist,Write.CI = TRUE)
+	}
 
-	#print("Show Histogram")
+	if (Show.Curve.All) { 
 
-	Draw.Histogram(w.all,cola=col.hist)
+		Draw.Curve.All(results,cola=col.curve,
+			Ltype=3,Lwidth = 4,x.start=x.lim.min,x.end=x.lim.max)
+		Draw.Curve.All(results,cola=col.curve,
+			Ltype=1,Lwidth = 4,x.start=Int.Beg,x.end=Int.End)
+
+	} # EOF Show.Curve.All
+
 
 	if (Show.KD) Draw.KD(val.input,w.all,cola=col.kd)
 
-	zsds.check = max(results$zsds[1,])
 
-	if (Show.Curve.All & zsds.check < 1.05) {
-
-		Draw.Curve.All(w=w.all,cola=col.curve,
-			Ltype=3,Lwidth = 4,x.start=x.lim.min,x.end=x.lim.max)
-		Draw.Curve.All(w=w.all,cola=col.curve,
-			Ltype=1,Lwidth = 4,x.start=Int.Beg,x.end=Int.End)
-
-		}
-
-	if (Show.Curve.All & zsds.check > 1.05) {
-
-		print("Showing SDG1 PLOT")	
-
-		Draw.Curve.All.SDG1(w=w.all,ncp=results$ncp,zsds=results$zsds,cola=col.curve,
-			Ltype = 3,Lwidth = 4,x.start=x.lim.min,x.end=x.lim.max)
-		Draw.Curve.All.SDG1(w=w.all,ncp=results$ncp,zsds=results$zsds,cola=col.curve,
-			Ltype=1,Lwidth = 4,x.start=Int.Beg,x.end=Int.End)
-		}
-
-	if (length(loc.power) > 0 && !is.na(loc.power[1])) Write.Local.Power(loc.power)	
-
-	} # End of Show.Histogram
-
-
-
-########################################################################
-### code for confidence intervals 
-########################################################################
-
-### If Confidence Intervals are requested, compute CI (boot.iter > 0)
-if (boot.iter > 0 & Est.Method %in% c("OF","EM","EXT") )  {
-
-	#boot.iter = 50
-	#Est.Method = "EM"
-
-	res.with.ci = get.ci.info(Est.Method = Est.Method)
-
-	results = res.with.ci
-
-}
-
-
-if (boot.iter > 0 & substring(Est.Method,1,3) == "CLU") {
-
-	results = rbind(c(ODR,ODR.low,ODR.high),EDR,ERR,FDR)
-	rownames(results) = c("ODR","EDR","ERR","FDR")
-	round(results,3)
-
-}
-
-
-if (boot.iter > 0 & Est.Method == "NEW") results = results.new
-
-zsds.check = max(results$zsds[1,])
-
-if (boot.iter > 0 & Show.Histogram) {
-
-	Draw.Histogram(w.all,cola=col.hist,Write.CI = TRUE)
-
-	if (Show.KD) Draw.KD(val.input,w.all,cola=col.kd)
-
-	if (Show.Curve.All & zsds.check < 1.05) {
-		Draw.Curve.All(w=w.all,cola=col.curve,
-			Ltype=3,Lwidth = 4,x.start=x.lim.min,x.end=x.lim.max)
-		Draw.Curve.All(w=w.all,cola=col.curve,
-			Ltype=1,Lwidth = 4,x.start=Int.Beg,x.end=Int.End)
-		}
-
-	if (Show.Curve.All & zsds.check > 1.05) {
-		Draw.Curve.All.SDG1(w=w.all,ncp=results$ncp,zsds=results$zsds,cola=col.curve,
-			Ltype = 3,Lwidth = 4,x.start=x.lim.min,x.end=x.lim.max)
-		Draw.Curve.All.SDG1(w=w.all,ncp=results$ncp,zsds=results$zsds,cola=col.curve,
-			Ltype=1,Lwidth = 4,x.start=Int.Beg,x.end=Int.End)
-		}
-
-
-	if (length(loc.power) > 0 && !is.na(loc.power[1])) Write.Local.Power(loc.power)	
+	if (length(results$local.power) > 0 && !is.na(results$local.power[1])) Write.Local.Power(results$local.power[1,])	
 
 
 } # End of Show.Histogram	for bootstrap
