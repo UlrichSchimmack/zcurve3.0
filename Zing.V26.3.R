@@ -501,7 +501,6 @@ run_bootstrap_list <- function(INT,
                                cores      = round(parallel::detectCores() * .8)) {
 
   ncores <- max(1, cores)
-  cat("Using", ncores, "cores\n")
 
   cl <- parallel::makeCluster(cores)
 
@@ -603,7 +602,7 @@ res.pe = list(
    w.inp = res.run$w.inp,
    w.sig = cp.res$w.sig,
    w.all = cp.res$w.all,
-   loc.pow = cp.res$loc.pow,
+   local.power = cp.res$local.power,
    fit = res.run$loglik
 )
 
@@ -667,7 +666,7 @@ boot_list = lcbind(boot_res,boot_power)
     fit = matrix(NA,2,1),
     EDR = matrix(NA,2,1),
     ERR = matrix(NA,2,1),
-    loc.pow = matrix(NA,2,length(res.pe$loc.pow))
+    local.power = matrix(NA,2,length(res.pe$local.power))
   )
 
 }
@@ -993,7 +992,6 @@ boot.old.fashioned <- function(val.input, boot.iter = 10000, ncores = NULL, seed
   if (is.null(ncores)) ncores <- max(1, parallel::detectCores() *.8)
 
   ncores <- max(1, cores)
-  cat("Using", ncores, "cores\n")
 
   ## ---- Pre-filter to fitting range ----
   INT <- val.input[val.input >= Int.Beg & val.input <= Int.End]
@@ -1180,8 +1178,6 @@ run.new.OF <- function(val.input, boot.iter = 0, NCP.FIXED = TRUE, ZSDS.FIXED = 
     ncores <- max(1, parallel::detectCores() * .8)
     cl <- parallel::makeCluster(ncores)
     on.exit(parallel::stopCluster(cl), add = TRUE)
-
-    cat("Using", ncores, "cores\n")
 
     parallel::clusterExport(cl,
       varlist = c("old.fashioned", "build.Dens", "Get.Densities",
@@ -1600,18 +1596,19 @@ hist(c(0),main="",ylim=c(ymin,ymax),ylab="",xlab="",xlim=c(x.lim.min,x.lim.max),
 	if(TEST4BIAS & !is.null(bias) ) {
 		if (bias[3] < .00005) { bias.res = "EJS, p < .0001" } else {  
 			bias.res = paste0("EJS, p = ",sub("^0","",formatC(bias[3],format="f",digits=4))) }
-		bias.res
+	bias.res
+
 	}	
 
-	ODR = results$ODR[1]*100
-	ODR.low = results$ODR[2]*100
-	ODR.high = results$ODR[3]*100
-	EDR = results$EDR[1]*100
-	EDR.low = results$EDR[2]*100
-	EDR.high = results$EDR[3]*100
-	ERR = results$ERR[1]*100
-	ERR.low = results$ERR[2]*100
-	ERR.high = results$ERR[3]*100
+	ODR = round(results$ODR[1]*100)
+	ODR.low = round(results$ODR[2]*100)
+	ODR.high = round(results$ODR[3]*100)
+	EDR = round(results$EDR[1]*100)
+	EDR.low = round(results$EDR[2]*100)
+	EDR.high = round(results$EDR[3]*100)
+	ERR = round(results$ERR[1]*100)
+	ERR.low = round(results$ERR[2]*100)
+	ERR.high = round(results$ERR[3]*100)
 	FDR = results$FDR[1]*100
 	FDR.low = results$FDR[2]*100
 	FDR.high = results$FDR[3]*100
@@ -2250,11 +2247,12 @@ if(Est.Method == "EM") {
 
 
 res$FDR = (1/res$EDR - 1)*(alpha/(1-alpha))
+res$FDR = res$FDR[c(1,3,2)]
 
 bias = NULL
 if(TEST4BIAS) { 
-  bias = test.bias(w.all) 
-  namees(bias) = c("OBS.JS","EXP.JS","EJS.p")
+  bias = test.bias(res$w.all[1,]) 
+  names(bias) = c("OBS.JS","EXP.JS","EJS.p")
 }
 
 results = list(
@@ -2273,6 +2271,7 @@ results = list(
 	  )
 
 
+#results
 
 ####################################################################
 
