@@ -163,3 +163,142 @@ run_boot_cluster_weightr <- function(yi, vi, cluster,
     pred.interval = pred.interval
   ))
 }
+
+
+
+
+
+## =========================================================
+## Effect-size distribution plot with colored SE-band fills
+## =========================================================
+
+#pop.mu = .2; pop.tau = .3
+
+run_prediction_interval_plot = function(
+    pop.mu, 
+    pop.tau, 
+    yi,
+    show_band = c(TRUE, TRUE, TRUE, TRUE, TRUE) ) {
+
+
+## SE bands
+## first band (0 to .1) is included here but not plotted by default
+band_labels <- c("SE 0-.1", "SE .1-.2", "SE .2-.3", "SE .3-.4", "SE > .4")
+
+## Representative SE for each band
+## For the open-ended band (> .4), choose a reasonable representative value
+se_rep <- c(0.05, 0.15, 0.25, 0.35, 0.50)
+
+## Colors (dark = more precise, light = less precise)
+band_cols <- c("#66A61E", "#E6AB02", "#1B9E77",  "#E7298A", "#7570B3")
+
+## Transparency
+fill_alpha <- rep(.1,5)
+
+## ---- x grid ----
+x <- seq(-1, 2, length.out = 1200)
+
+## ---- Population distribution ----
+pop_y <- dnorm(x, mean = pop.mu, sd = pop.tau)
+
+dat$se_band <- cut(
+  dat$se,
+  breaks = c(0, .1, .2, .3, .4, Inf),
+  labels = c("SE 0-.1", "SE .1-.2", "SE .2-.3", "SE .3-.4", "SE > .4"),
+  right = TRUE,
+  include.lowest = TRUE
+)
+
+
+## ---- Observed mean and SD by SE band ----
+
+band_stats <- aggregate(
+  yi ~ se_band,
+  data = dat,
+  FUN = function(x) c(
+    n = sum(!is.na(x)),
+    mean = mean(x, na.rm = TRUE),
+    sd = sd(x, na.rm = TRUE)
+  )
+)
+
+## ---- Clean up aggregate output ----
+
+band_stats <- do.call(
+  data.frame,
+  band_stats
+)
+
+names(band_stats) <- c("se_band", "n", "mean", "sd")
+
+band_stats
+
+## ---- Observed density curves from empirical band means/SDs ----
+
+sample_y <- lapply(seq_len(nrow(band_stats)), function(i) {
+  dnorm(
+    x,
+    mean = band_stats$mean[i],
+    sd   = band_stats$sd[i]
+  )
+})
+
+names(sample_y) <- band_stats$se_band
+
+## ---- y-axis limits ----
+y_max <- max(
+  pop_y,
+  unlist(sample_y[show_band])
+)
+
+## ---- Plot setup ----
+par(mar = c(5, 5, 4, 2) + 0.1)
+
+plot(
+  x, pop_y,
+  type = "n",
+  xlab = "Effect Size (d)",
+  ylab = "Density",
+  main = "Effect Size Distribution",
+  ylim = c(0, y_max * 1.10),
+  xaxs = "i",
+  yaxs = "i"
+)
+
+## ---- Draw filled sample distributions ----
+## Draw widest curves first so smaller ones remain visible
+draw_order <- rev(which(show_band))
+
+for (i in draw_order) {
+  polygon(
+    x = c(x, rev(x)),
+    y = c(sample_y[[i]], rep(0, length(x))),
+    col = adjustcolor(band_cols[i], alpha.f = fill_alpha[i]),
+    border = NA
+  )
+}
+
+## ---- Add thin outlines for sample distributions ----
+for (i in which(show_band)) {
+  lines(x, sample_y[[i]], col = band_cols[i], lwd = 4)
+}
+
+## ---- Add population curve ----
+lines(x, pop_y, col = "black", lwd = 3, lty = 2)
+
+## ---- Legend ----
+legend(
+  "topright",
+  inset = 0.03,
+  legend = c("Population", band_labels[show_band]),
+  col    = c("black", band_cols[show_band]),
+  lty    = c(2, rep(1, sum(show_band))),
+  lwd    = c(4, rep(1.8, sum(show_band))),
+  pch    = c(NA, rep(21, sum(show_band))),
+  pt.cex = 2,
+  pt.bg  = c(NA, adjustcolor(band_cols[show_band], alpha.f = 1)),
+  bty    = "n"
+)
+
+} # EOF Prediction Interval PLOT
+
