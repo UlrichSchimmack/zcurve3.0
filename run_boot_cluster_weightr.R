@@ -127,41 +127,45 @@ run_boot_cluster_weightr <- function(yi, vi, cluster,
   med_adj   <- median(boot_clean[,"adj_mean"])
   med_tau   <- median(sqrt(boot_clean[,"adj_tau2"]))
   
-  cat("\n--- Results ---\n")
-  cat(sprintf("                   Original  Median   [95%% CI]\n"))
-  cat(sprintf("Adjusted mean:     %.4f    %.4f   [%.4f, %.4f]\n", 
+
+  output <- paste0(
+    "\n--- Results ---\n",
+   sprintf("Adjusted mean:     %.4f    %.4f   [%.4f, %.4f]\n", 
               est_mean_orig, med_adj, ci_mean_adj[1], ci_mean_adj[2]))
-  cat(sprintf("Tau:               %.4f    %.4f   [%.4f, %.4f]\n", 
+   sprintf("Tau:               %.4f    %.4f   [%.4f, %.4f]\n", 
               tau_orig, med_tau, ci_tau_adj[1], ci_tau_adj[2]))
 
   for (j in seq_len(n_weights)) {
     wname <- paste0("weight_", j)
     ci_w <- quantile(boot_clean[, wname], c(.025, .975))
     med_w <- median(boot_clean[, wname])
-    cat(sprintf("Weight %d (%s):\n                   %.4f    %.4f   [%.4f, %.4f]\n",
+    sprintf("Weight %d (%s):\n                   %.4f    %.4f   [%.4f, %.4f]\n",
                 j, interval_labels[j+1], weights_orig[j], med_w, ci_w[1], ci_w[2]))
   }
 
-  cat("\n")
- 
-  cat(sprintf("Prediction Interval ranges from %.2f to %.2f\n",
+  sprintf("Prediction Interval ranges from %.2f to %.2f\n",
       pred.interval[1], pred.interval[2]))
+
+
+  )
+  cat(output)
 
   
   # Return everything
   invisible(list(
     original = orig,
-    est_orig = est_mean_orig,
-    tau_orig = tau_orig,
-    weights_orig = weights_orig,
-    ci_mean_adj = ci_mean_adj,
-    ci_tau_adj = ci_tau_adj,
-    med_adj = med_adj,
-    med_tau = med_tau,
-    boot_matrix = boot_mat,
-    n_fail = n_fail,
-    interval_labels = interval_labels,
-    pred.interval = pred.interval
+    cluster  = cluster
+ #   est_orig = est_mean_orig,
+ #   tau_orig = tau_orig,
+ #   weights_orig = weights_orig,
+ #   ci_mean_adj = ci_mean_adj,
+ #   ci_tau_adj = ci_tau_adj,
+ #   med_adj = med_adj,
+ #   med_tau = med_tau,
+ #   boot_matrix = boot_mat,
+ #   n_fail = n_fail,
+ #   interval_labels = interval_labels,
+ #   pred.interval = pred.interval
   ))
 }
 
