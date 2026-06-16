@@ -1,6 +1,7 @@
 
 
 
+library(parallel)
 
 
 ### Load weightr in main program. 
