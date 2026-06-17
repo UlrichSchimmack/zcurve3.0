@@ -2813,11 +2813,11 @@ if (slope.k > 10) {
 }
 names(slope) = c("slope.k","slope.adj","slope","slope.se","slope.lb","slope.ub")
 
-
-if(!skip_zcurve) {
-
 g_ncp = ncp
 g_zsds = zsds
+
+
+if(!skip_zcurve) {
 
 #cluster.id = NULL
 ### Heterogeneity Estimation
