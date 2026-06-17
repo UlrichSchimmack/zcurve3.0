@@ -1,10 +1,12 @@
 
 
 
-library(parallel)
-
-
 ### Load weightr in main program. 
+
+if (!"parallel" %in% loadedNamespaces()) {
+  library(parallel)
+}
+
 
 if (!"weightr" %in% loadedNamespaces()) {
   library(weightr)
@@ -13,7 +15,7 @@ if (!"weightr" %in% loadedNamespaces()) {
 
 ### Clustered Step-Function Selection Model (Weight-R with parallel bootstrap)
 
-#nboot = 500;steps=c(.5,.05,.025,.005);ncores=16;seed = 2026
+#nboot = 500;steps=c(.025);ncores=16;seed = 2026
 #yi = dat$d; vi = dat$mn
 
 run_boot_cluster_weightr <- function(yi, vi, cluster, 
@@ -128,33 +130,60 @@ run_boot_cluster_weightr <- function(yi, vi, cluster,
   med_tau   <- median(sqrt(boot_clean[,"adj_tau2"]))
   
 
-  output <- paste0(
+  output_mu_tau <- paste0(
     "\n--- Results ---\n",
    sprintf("Adjusted mean:     %.4f    %.4f   [%.4f, %.4f]\n", 
-              est_mean_orig, med_adj, ci_mean_adj[1], ci_mean_adj[2]))
+              est_mean_orig, med_adj, ci_mean_adj[1], ci_mean_adj[2]),
    sprintf("Tau:               %.4f    %.4f   [%.4f, %.4f]\n", 
-              tau_orig, med_tau, ci_tau_adj[1], ci_tau_adj[2]))
+              tau_orig, med_tau, ci_tau_adj[1], ci_tau_adj[2])
+
+  )
+
+  output_weight <- ""
 
   for (j in seq_len(n_weights)) {
     wname <- paste0("weight_", j)
-    ci_w <- quantile(boot_clean[, wname], c(.025, .975))
-    med_w <- median(boot_clean[, wname])
-    sprintf("Weight %d (%s):\n                   %.4f    %.4f   [%.4f, %.4f]\n",
-                j, interval_labels[j+1], weights_orig[j], med_w, ci_w[1], ci_w[2]))
-  }
+  
+    ci_w  <- quantile(boot_clean[, wname], c(.025, .975), na.rm = TRUE)
+    med_w <- median(boot_clean[, wname], na.rm = TRUE)
+  
+    output_weight[j] <- sprintf(
+      "Weight %d (%s):\n                   %.4f    %.4f   [%.4f, %.4f]\n",
+      j, interval_labels[j + 1], weights_orig[j], med_w, ci_w[1], ci_w[2]
+      )
+    }
+  
+  output_pi = sprintf("Prediction Interval ranges from %.2f to %.2f\n",
+      pred.interval[1], pred.interval[2])
 
-  sprintf("Prediction Interval ranges from %.2f to %.2f\n",
-      pred.interval[1], pred.interval[2]))
-
-
-  )
+  output <- paste0(output_ori,output_weight,output.pi)
   cat(output)
 
-  
-  # Return everything
-  invisible(list(
-    original = orig,
-    cluster  = cluster
+  print.myresult <- function(x, ...) { cat(unclass(x)); invisible(x) }
+
+  myfit <- function(fit) {                 # `fit`, `x`, whatever your inputs are
+    output_my_tau <- paste0(output_mu_tau)            # your real paste0() code here
+    output_weight <- paste0(output_weight)
+    output_pi     <- paste0(output_pi)
+    output <- paste0(output_mu_tau, output_weight, output_pi)
+    structure(output, class = "myresult")
+  }
+
+  cluster_results <- myfit(myresults)
+  cluster_results
+
+  res <- list(
+    original_results = orig,
+    cluster_results = cluster_results)
+
+  #res
+
+  #res$original_results
+  #res$cluster_results
+#  # Return everything
+#  invisible(list(
+ #   original_results = orig,
+ #   cluster_results  = cluster_results
  #   est_orig = est_mean_orig,
  #   tau_orig = tau_orig,
  #   weights_orig = weights_orig,
@@ -166,8 +195,9 @@ run_boot_cluster_weightr <- function(yi, vi, cluster,
  #   n_fail = n_fail,
  #   interval_labels = interval_labels,
  #   pred.interval = pred.interval
-  ))
-}
+ # ))
+
+} # EOF cluster weightr function
 
 
 
