@@ -15,10 +15,10 @@ if (!"weightr" %in% loadedNamespaces()) {
 
 ### Clustered Step-Function Selection Model (Weight-R with parallel bootstrap)
 
-#nboot = 500;steps=c(.025);ncores=16;seed = 2026
+#nboot = 500;steps=c(.5,.025);ncores=16;seed = 2026
 #yi = dat$d; vi = dat$mn
 
-run_boot_cluster_weightr <- function(yi, vi, cluster, 
+run_boot_cluster_weightr <- function(yi, vi, cluster.id, 
                                       nboot = 500, 
                                       steps = c(.05),
                                       ncores = parallel::detectCores() - 1,
@@ -40,17 +40,8 @@ run_boot_cluster_weightr <- function(yi, vi, cluster,
   interval_labels <- paste0("p in (", boundaries[1:length(boundaries)-1], 
                             ", ", boundaries[2:length(boundaries)], "]")
   
-#  cat("Original adjusted mean:  ", round(est_mean_orig, 4), "\n")
-#  cat("Tau (heterogeneity):     ", round(tau_orig, 4), "\n")
-#  cat("Weights:\n")
-#  cat(sprintf("  Reference (=1):  %s\n", interval_labels[1]))
-#  for (j in seq_len(n_weights)) {
-#    cat(sprintf("  Weight %d = %.4f:  %s\n", j, weights_orig[j], interval_labels[j+1]))
-#  }
-#  cat("\n")
-  
   # --- Cluster bootstrap ---
-  clusters <- unique(cluster)
+  clusters <- unique(cluster.id)
   k_clust  <- length(clusters)
   
   cat("Clusters:", k_clust, " | Effects:", length(yi), 
@@ -62,10 +53,10 @@ run_boot_cluster_weightr <- function(yi, vi, cluster,
   })
   
   expand_clusters <- function(resampled_ids) {
-    idx <- unlist(lapply(resampled_ids, function(cid) which(cluster == cid)))
+    idx <- unlist(lapply(resampled_ids, function(cid) which(cluster.id == cid)))
     return(idx)
   }
-  
+
   # Single bootstrap iteration
   boot_one <- function(b) {
     idx <- expand_clusters(boot_samples[[b]])
@@ -86,7 +77,7 @@ run_boot_cluster_weightr <- function(yi, vi, cluster,
 
   # Run in parallel
   cl <- makeCluster(ncores)
-  clusterExport(cl, varlist = c("yi", "vi", "cluster", "clusters", "k_clust",
+  clusterExport(cl, varlist = c("yi", "vi", "cluster.id", "clusters", "k_clust",
                                "boot_samples", "expand_clusters", "steps", "n_par"),
                 envir = environment())
   clusterEvalQ(cl, library(weightr))
@@ -103,8 +94,6 @@ run_boot_cluster_weightr <- function(yi, vi, cluster,
   # --- Combine results ---
   boot_mat <- do.call(rbind, boot_results)
 
-  boot_mat
- 
   colnames(boot_mat) <- c("adj_tau2", "unadj_tau2", "adj_mean",
                          paste0("weight_", seq_len(n_weights)))
   
@@ -114,11 +103,12 @@ run_boot_cluster_weightr <- function(yi, vi, cluster,
   
   # Drop failures for CIs
   boot_clean <- boot_mat[!is.na(boot_mat[,1]), , drop = FALSE]
+  colnames(boot_clean)
 
-  pred_draws <- unlist(lapply(1:nrow(boot_clean), function(b) {
-    rnorm(100, 
-        mean = boot_clean[b, "adj_mean"], 
-        sd   = sqrt(boot_clean[b, "adj_tau2"]))
+  pred_draws <- unlist(lapply(1:nrow(boot_clean), function(bb) {
+    rnorm(500, 
+        mean = boot_clean[bb, "adj_mean"], 
+        sd   = sqrt(boot_clean[bb, "adj_tau2"]))
    }))
   pred.interval = quantile(pred_draws, c(.025, .975))
  
@@ -152,12 +142,13 @@ run_boot_cluster_weightr <- function(yi, vi, cluster,
       j, interval_labels[j + 1], weights_orig[j], med_w, ci_w[1], ci_w[2]
       )
     }
-  
+
+  output_weight <- paste0(output_weight, collapse = "")   # now length 1  
+
   output_pi = sprintf("Prediction Interval ranges from %.2f to %.2f\n",
       pred.interval[1], pred.interval[2])
 
-  output <- paste0(output_ori,output_weight,output.pi)
-  cat(output)
+  output <- paste0(output_mu_tau,output_weight,output_pi)
 
   print.myresult <- function(x, ...) { cat(unclass(x)); invisible(x) }
 
@@ -176,14 +167,12 @@ run_boot_cluster_weightr <- function(yi, vi, cluster,
     original_results = orig,
     cluster_results = cluster_results)
 
-  #res
-
-  #res$original_results
   #res$cluster_results
+
+  return(res)
+
 #  # Return everything
 #  invisible(list(
- #   original_results = orig,
- #   cluster_results  = cluster_results
  #   est_orig = est_mean_orig,
  #   tau_orig = tau_orig,
  #   weights_orig = weights_orig,
