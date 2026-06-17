@@ -2870,7 +2870,7 @@ edr.adj.ci
 BIAS = NULL
 if (TEST4BIAS) BIAS = run_bias_tests()
 
-
+#}
 ### BBB 
 
 #boot.iter = 500
@@ -2981,14 +2981,11 @@ if(skip_zcurve) {
    ODR = rep(NA,3),
    EDR = rep(NA,3),
    ERR = rep(NA,3),
-   POW_h1_sig = rep(NA,3),
    ncp = matrix(NA,3,7),
    zsds = matrix(NA,3,7),
-   heterogeneity = rep(NA,3),
    w.inp = matrix(NA,3,7),
    w.all = matrix(NA,3,7),
    local.power = matrix(NA,3,12),
-   adjustments = rep(NA,5),
    fit = rep(NA,3),
    gamma_shape = rep(NA,3),
    gamma_rate = rep(NA,3),
@@ -2996,8 +2993,26 @@ if(skip_zcurve) {
    gamma_err = rep(NA,3)
    )
 
+BIAS = list(
+  Credibility = rep(NA,3),
+  Rindex      = rep(NA,3),
+  Caliper = rep(NA,3))
+
+BIAS$ZBIAS = list(
+  EJST    = rep(NA,3),
+  MJNST   = rep(NA,3),    
+  ZCT     = rep(NA,3),
+  RDD     = rep(NA,3),
+  Hybrid  = rep(NA,3)
+)
+
+BIAS
+
+POW_h1_sig = rep(NA,3)
 FDR = rep(NA,3)
 ODR_EDR_D = rep(NA,3)
+heterogeneity = rep(NA,3)
+adjustments = rep(NA,5)
 
 }
 
