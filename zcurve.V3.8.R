@@ -6,7 +6,8 @@
 ### SETTING PARAMETERS FOR Z-CURVE MODEL
 ########################################################################
 
-version <- "zcurve3(3.8)"
+
+version <- "zcurve3(3.81)"
 date <- "2026.06.17"  # Version label to appear on plots
 note <- "Now with Effect Size Estimation !!!"
 
