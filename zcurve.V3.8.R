@@ -1783,6 +1783,10 @@ zcurve.time = system.time({
         w.all = t(cbind(res.pe$w.all, matrix(NA,length(res.pe$w.all),2)))
         w.inp = t(cbind(res.pe$w.all, matrix(NA,length(res.pe$w.inp),2)))
         local.power = t(cbind(res.pe$local.power,matrix(NA,length(res.pe$local.power),2)))
+        sel_ns_w = c(res.pe$sel_ns_w,NA,NA)
+        mu = c(res.pe$mu,NA,NA)
+        tau = c(res.pe$tau,NA,NA)
+
 
         zcurve.res = list(
             ODR                = ODR,
@@ -1797,7 +1801,10 @@ zcurve.time = system.time({
             gamma_rate         = res.pe$gamma_rate,
             gamma_edr          = res.pe$gamma_edr,
             gamma_err          = res.pe$gamma_err,
-            ODR_EDR_D          = rep(NA,3)
+            ODR_EDR_D          = rep(NA,3),
+            sel_ns_w           = sel_ns_w,
+            mu                 = mu,
+            tau                = tau
         )
 
     } # EOF no bootstrap
@@ -2874,6 +2881,7 @@ if (TEST4BIAS) BIAS = run_bias_tests()
 ### BBB 
 
 #boot.iter = 500
+
 print("MAIN")
 res = run_zcurve(Est.Method = Est.Method,val.input = val.input,crit=crit,Int.Beg=Int.Beg,Int.End=Int.End,
                  cluster.id=cluster.id,boot.iter = boot.iter,ncp = ncp, zsds = zsds, 
