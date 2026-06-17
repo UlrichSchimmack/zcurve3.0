@@ -3023,6 +3023,10 @@ ODR_EDR_D = rep(NA,3)
 heterogeneity = rep(NA,3)
 adjustments = rep(NA,5)
 
+sel_ns_w = rep(NA,3)
+mu = rep(NA,3)
+tau = rep(NA,3)
+
 }
 
 names(ODR_EDR_D) = c("ODR_EDR_D_pe","ODR_EDR_D_lb","ODR_EDR_D_ub")
