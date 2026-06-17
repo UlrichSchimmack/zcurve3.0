@@ -3026,6 +3026,11 @@ names(res$ODR) = c("ODR_pe","ODR_lb","ODR_ub")
 names(res$EDR) = c("EDR_pe","EDR_lb","EDR_ub")
 names(res$ERR) = c("ERR_pe","ERR_lb","ERR_ub")
 
+names(res$sel_ns_w) = c("W_NS_pe","W_NS_lb","W_NS_ub")
+names(res$mu) = c("MU_pe","MU_lb","MU_ub")
+names(res$tau) = c("TAU_pe","TAU_lb","TAU_ub")
+
+
 heterogeneity = as.numeric(heterogeneity)
 names(heterogeneity) = c("ncp_sd_pe","ncp_sd_lb","ncp_sd_ub")
 
