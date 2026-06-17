@@ -2999,7 +2999,11 @@ if(skip_zcurve) {
    gamma_shape = rep(NA,3),
    gamma_rate = rep(NA,3),
    gamma_edr = rep(NA,3),
-   gamma_err = rep(NA,3)
+   gamma_err = rep(NA,3),
+   sel_ns_w = rep(NA,3),
+   mu = rep(NA,3),
+   tau = rep(NA,3)
+
    )
 
 BIAS = list(
@@ -3022,10 +3026,6 @@ FDR = rep(NA,3)
 ODR_EDR_D = rep(NA,3)
 heterogeneity = rep(NA,3)
 adjustments = rep(NA,5)
-
-sel_ns_w = rep(NA,3)
-mu = rep(NA,3)
-tau = rep(NA,3)
 
 }
 
