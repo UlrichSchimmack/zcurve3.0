@@ -7,7 +7,7 @@
 ########################################################################
 
 version <- "zcurve3(3.8)"
-date <- "2026.06.13"  # Version label to appear on plots
+date <- "2026.06.17"  # Version label to appear on plots
 note <- "Now with Effect Size Estimation !!!"
 
 print(version)
