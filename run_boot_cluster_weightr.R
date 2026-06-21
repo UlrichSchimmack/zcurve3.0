@@ -24,6 +24,8 @@ run_boot_cluster_weightr <- function(yi, vi, cluster.id,
                                       ncores = parallel::detectCores() - 1,
                                       seed = 2026) {
   
+  print("Version 26.06.20")
+
   # --- Original estimate ---
   orig <- weightfunct(yi, vi, steps = steps)
   n_par <- length(orig[[2]]$par)  # mean + tau + n_weights
