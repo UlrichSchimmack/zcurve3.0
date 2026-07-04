@@ -6,20 +6,30 @@ library(weightr)
 library(metafor)
 
 
-#setwd("C:/Users/ulric/Dropbox/PHPCurves/DOCS/z-curve/Simulations/")
+#home_dir = "C:/Users/ulric/Dropbox/PHPCurves/DOCS/z-curve/Simulations"
+#setwd(home_dir)
+zcurve = "zcurve.V3.86.R"
 
-source("https://raw.githubusercontent.com/UlrichSchimmack/zcurve3.0/refs/heads/main/run_boot_cluster_weightr.R")
-
-source("C:/Users/ulric/Dropbox/PHPCurves/DOCS/z-curve/Simulations/run_boot_cluster_weightr.R")
-
-zcurve = "C:/Users/ulric/Dropbox/PHPCurves/DOCS/z-curve/Simulations/zcurve.V3.86.R"
-source(zcurve)
+# load directly from guithub
+zcurve <- "https://raw.githubusercontent.com/UlrichSchimmack/zcurve3.0/main/zcurve.V3.86.R"
 
 setwd("C:\\Users\\ulric\\Dropbox\\PHPCurves\\DOCS\\z-curve\\TerrorManagement")
 
+### download data from OSF or my github
+
+### Meta-analysis data file with wrong effect sizes
 tm <- read_xlsx("data_meta.xlsx")
 tm = data.frame(tm)
 dim(tm)
+
+### p-curve dataset with actual test results
+tmz <- read_xlsx("data_pcurve.xlsx")
+tmz = data.frame(tmz)
+dim(tmz)
+colnames(tmz)
+table(tmz$Statistics.1)
+
+
 
 hist(tm$yi,main="Histogram of Effect Size Estimates",xlab="Standardized Mean Difference")
 
@@ -92,12 +102,6 @@ mom = trunc_moments(-.336,.956, 0)
 mom[1] + 1.96* mom[3]
 
 
-home_dir = "C:/Users/ulric/Dropbox/PHPCurves/DOCS/z-curve/Simulations"
-setwd(home_dir)
-zcurve = "zcurve.V3.86.R"
-
-zcurve <- "https://raw.githubusercontent.com/UlrichSchimmack/zcurve3.0/main/zcurve.V3.86.R"
-
 source(zcurve)
 Directional = TRUE
 boot.iter = 500
@@ -111,13 +115,7 @@ zres = Zing(
 )
 
 
-tmz <- read_xlsx("data_pcurve.xlsx")
-tmz = data.frame(tmz)
-dim(tmz)
-colnames(tmz)
-table(tmz$Statistics.1)
-
-### get z-values
+### get z-values from tmz file
 stat_string_to_z <- function(x,
                              alternative = "two.sided",
                              signed = TRUE,
