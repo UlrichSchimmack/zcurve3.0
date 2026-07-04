@@ -1203,9 +1203,9 @@ run_OF <- function(val.input,yi=NULL,sei=NULL,n_grid,ODR,Int.Beg,Int.End,ncp,zsd
   cp.res = Compute.Power.Z.General(cp.inp = of.est, Int.Beg = Int.Beg, Int.End = Int.End)
   cp.res
 
-  es_res_pe = NULL
+  es_res = NULL
   if(!is.null(yi)) {
-  es_res_pe = get_es_estimates(
+  es_res = get_es_estimates(
      val.input = val.input,
      yi          = yi,
      sei         = sei,
@@ -1229,12 +1229,11 @@ run_OF <- function(val.input,yi=NULL,sei=NULL,n_grid,ODR,Int.Beg,Int.End,ncp,zsd
     local.power     = cp.res$local.power,
     shape_d_median  = cp.res$shape_d_median,
     shape_d_mean    = cp.res$shape_d_mean,
-    es_res_pe       = es_res_pe,
-    es_estimate     = es_res_pe$es_mean_pos
+    local_es        = es_res$local_es,
+    es_estimate     = es_res$es_mean_pos
   )
 
   ret
-
 
 } ### EOF run_OF
 
@@ -1903,8 +1902,8 @@ zcurve.time = system.time({
       ODR_EDR_D      = ODR - res.run$EDR,
       shape_d_median = res.run$shape_d_median,
       shape_d_mean   = res.run$shape_d_mean,
-      es_res         = res.run$es_est,
-      es_pe          = res.run$es_est$es_mean_pos
+      local_es_pe    = res.run$local_es,
+      es_est_pe      = res.run$es_estimate
      )
 
      #res.pe 
@@ -1928,9 +1927,14 @@ zcurve.time = system.time({
 
     }
 
-  ### res.pe
+  #################################
+
+  ### finsh res.pe
+
+  #################################
+
   
-  ### boostrap
+  ### start boostrap
 
   #Est.Method = "OF"; boot.iter = 500
   #cluster.id = NULL
@@ -1994,20 +1998,23 @@ zcurve.time = system.time({
 
           print("End of Bootstrap")
 
+
           ODR_boot   <- sapply(boot_res, function(x) x$ODR)
+          ODR_boot[is.nan(ODR_boot)] = NA
+          ODR_ci = c(
+             quantile(ODR_boot, probs = .025, na.rm = TRUE),
+             quantile(ODR_boot, probs = .975, na.rm = TRUE)
+          )
+
+
+          print("Checkpoint OK")
 
           EDR_boot   <- sapply(boot_res, function(x) x$EDR)
 
           ERR_boot   <- sapply(boot_res, function(x) x$ERR)
 
-
           EDR_boot_lb <- pmax(alpha, EDR_boot - CI.EDR.MIN.ADJ)
           EDR_boot_ub <- pmin(1,     EDR_boot + CI.EDR.MIN.ADJ)
-
-          ODR_ci = c(
-             quantile(ODR_boot, probs = .025, na.rm = TRUE),
-             quantile(ODR_boot, probs = .975, na.rm = TRUE)
-          )
 
           EDR_ci = c(
              quantile(EDR_boot_lb, probs = .025, na.rm = TRUE),
@@ -2022,24 +2029,38 @@ zcurve.time = system.time({
 
 
           ODR_EDR_D_ci  <- c(
-               quantile(ODR_boot - EDR_boot_lb, .025),
-               quantile(ODR_boot - EDR_boot_ub, .975)
+               quantile(ODR_boot - EDR_boot_lb, .025, na.rm = TRUE),
+               quantile(ODR_boot - EDR_boot_ub, .975, na.rm = TRUE)
            )
           ODR_EDR_D = c(res.pe$ODR_EDR_D,ODR_EDR_D_ci)
 
 
           if(!is.null(yi)) {
 
-            es_boot = sapply(boot_res, function(x) x$es_est$es_mean_pos)
-            if(max(es_boot) > res.pe$es_pe + .03) {
+            es_boot = sapply(boot_res, function(x) x$es_estimate)
+
+            if(max(es_boot) + .03 < res.pe$es_est_pe) {
                print(summary(es_boot))
                print(res.pe$es_pe)
                stop("check ES CI")
             } 
-
             es_ci = quantile(es_boot, probs = c(.025,.975), na.rm=TRUE)
-            es_est = c(res.pe$es_pe,es_ci)
-          }
+            es_estimate = c(res.pe$es_est_pe,es_ci)
+
+            es.loc = sapply(boot_res, function(x) x$local_es)
+
+            if(length(res.pe$local_es_pe) == 1) {
+               local_es_ci = quantile(es.loc, c(.025, .975),na.rm=TRUE)   # CI straight from the percentiles
+               local_es = c(res.pe$local_es_pe,local.es_ci)
+            } else {
+               local_es_ci = apply(es.loc,1,function(x) quantile(x,c(.025, .975),na.rm=TRUE) )   # CI straight from the percentiles
+               local_es  = rbind(res.pe$local_es, local_es_ci) 
+            }
+
+
+          } # EOF if yi 
+
+          print("ES results ok")
 
           if(length(res.pe$ncp) == 1) {
              ncp_ci = quantile(sapply(boot_res, function(x) x$ncp), c(.025, .975))   # CI straight from the percentiles
@@ -2083,6 +2104,7 @@ zcurve.time = system.time({
           }
 
 
+
           if(!is.na(res.pe$shape_d_median)) {
             shape_d_median = c(res.pe$shape_d_median,quantile(sapply(boot_res, function(x) x$shape_d_median), c(.025, .975)) )   # CI straight from the percentiles
             shape_d_mean   = c(res.pe$shape_d_mean,quantile(sapply(boot_res, function(x) x$shape_d_mean), c(.025, .975)) )   # CI straight from the percentiles
@@ -2116,6 +2138,7 @@ zcurve.time = system.time({
         w.all = t(cbind(res.pe$w.all, matrix(NA,length(res.pe$w.all),2)))
         w.inp = t(cbind(res.pe$w.all, matrix(NA,length(res.pe$w.inp),2)))
         local.power = t(cbind(res.pe$local.power,matrix(NA,length(res.pe$local.power),2)))
+        local.es = t(cbind(res.pe$local.es,matrix(NA,length(res.pe$local.es),2)))
         ODR_EDR_D = c(res.pe$ODR_EDR_D,NA,NA)
         shape_d_median = c(res.pe$shape_d_median,NA,NA)
         shape_d_mean = c(res.pe$shape_d_mean,NA,NA)
@@ -2135,6 +2158,7 @@ zcurve.time = system.time({
             w.inp              = w.inp,
             w.all              = w.all,
             local.power        = local.power,
+            local_es           = local_es,
             gamma_shape        = res.pe$gamma_shape,
             gamma_rate         = res.pe$gamma_rate,
             gamma_edr          = res.pe$gamma_edr,
@@ -2142,7 +2166,7 @@ zcurve.time = system.time({
             ODR_EDR_D          = ODR_EDR_D,
             shape_d_median     = shape_d_median,
             shape_d_mean       = shape_d_mean,
-            es_est             = es_est,  
+            es_estimate        = es_estimate,  
             es_res             = res.pe$es_res
           )
 
@@ -3127,6 +3151,13 @@ if (CURVE.TYPE == "z") {
 missing = is.na(val.input)
 val.input = val.input[!missing]
 if (!is.null(cluster.id)) cluster.id = cluster.id[!missing]
+if (!is.null(yi)) yi = yi[!missing]
+if (!is.null(sei)) sei = sei[!missing]
+
+check = c(length(val.input),length(cluster.id),length(yi),length(sei))
+check = check[check > 0]
+check = check == sum(check)/length(check)
+if(mean(check) < 1) stop("unequal number of cases")
 
 #if (two.sided) val.input = abs(val.input)
 
@@ -3459,8 +3490,8 @@ results = list(
 		gamma_rate     = res.main$gamma_rate,
 		gamma_edr      = res.main$gamma_edr,
 		gamma_err      = res.main$gamma_err,
-         es_res         = res.main$es_res,
-         es_est         = res.main$es_est
+         local_es       = res.main$local_es, 
+         es_estimate    = res.main$es_estimate
       )
 
 #results
