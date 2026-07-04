@@ -26,10 +26,31 @@ dim(tm)
 tmz <- read_xlsx("data_pcurve.xlsx")
 tmz = data.frame(tmz)
 dim(tmz)
-colnames(tmz)
-table(tmz$Statistics.1)
 
 
+### Diagnose the coding mistake 
+
+tm.merged = merge(tm,tmz,by="ID",all=TRUE)
+dim(tm.merged)
+
+sel = !is.na(tm.merged$yi.x) & !is.na(tm.merged$yi.y)
+table(sel)
+
+sel = tm.merged$Statistics == "F"
+plot(tm.merged$yi.y[sel],tm.merged$yi.x[sel])
+abline(v=c(0,1))
+abline(h=c(0,1))
+
+sel = tm.merged$Statistics == "t"
+plot(tm.merged$yi.y[sel],tm.merged$yi.x[sel])
+abline(v=c(0,1))
+abline(h=c(0,1))
+
+tapply(tm.merged$yi.x,tm.merged$Statistics,mean,na.rm=TRUE)
+tapply(tm.merged$yi.y,tm.merged$Statistics,mean,na.rm=TRUE)
+
+
+### analysis of meta data
 
 hist(tm$yi,main="Histogram of Effect Size Estimates",xlab="Standardized Mean Difference")
 
