@@ -499,6 +499,7 @@ Compute.Power.Z.General = function(
   #-------------------------------------------------------------------
   # helper: empirical-Bayes effect-size estimates
   #-------------------------------------------------------------------
+
   get_zcurve_es_estimates <- function(
       loc.p,
       sei_est,
@@ -506,42 +507,15 @@ Compute.Power.Z.General = function(
       wd.X,
       ncp,
       w.all,
-      pow,
-      pow.dir,
-      pow.sel,
-      val.input,                 # explicit (was enclosing-scope)
-      yi,                        # explicit
-      Directional,               # explicit (was enclosing-scope)
+      val.input,
+      yi,
+      Directional,
       crit    = 1.96,
       Int.Beg = 0,
       Int.End = 6,
       int.loc = 0.2,
       Folded  = FALSE,
-      xz      = 0.01) {          # explicit tail-anchor offset
-
-
-     if (1 == 2) {
-
-      loc.p       = out$loc.p
-      sei_est     = sei_est
-      z_grid      = out$z_grid
-      wd.X        = out$wd.X
-      ncp         = out$ncp.ext
-      w.all       = out$w.all.ext
-      pow         = out$pow.ext
-      pow.dir     = out$pow.dir.ext
-      pow.sel     = out$pow.sel.ext
-
-    }
-
-    #loc.p = out$loc.p
-    #wd.X = out$wd.X
-    #w.all = out$w.all
-    #loc.ncp = qnorm(loc.p) + crit
-    #plot(loc.ncp,wd.X)
-    #
-    #loc.es = loc.ncp * sei_est[,2]
-    #plot(loc.es,wd.X)
+      xz      = 0.01) {
 
     comp_ncp <- ncp
     comp_w   <- w.all
@@ -551,6 +525,7 @@ Compute.Power.Z.General = function(
     sei_out <- as.numeric(sei_est[, 2])
 
     ok      <- is.finite(z_grid) & is.finite(wX) & is.finite(sei_out)
+    stopifnot(length(z_grid) == length(wX), length(z_grid) == length(sei_out))
     z_grid  <- z_grid[ok]
     wX      <- wX[ok]
     sei_out <- sei_out[ok]
@@ -572,66 +547,81 @@ Compute.Power.Z.General = function(
     local_ncp.X <- num / den
     local_ncp.X[!is.finite(local_ncp.X)] <- NA_real_
 
-    if(Directional) {
+    if (Directional) {
       es.X <- local_ncp.X * sei_out
     } else {
       es.X <- abs(local_ncp.X) * sei_out
     }
 
-    w_g        <- w.all / sum(w.all)          # weights on components
-    ncp_mean   <- sum(w_g * ncp)
-    ncp_tau2   <- sum(w_g * ncp^2) - ncp_mean^2
-    ncp_tau    <- sqrt(ncp_tau2)
-    es_tau = ncp_tau * mean(sei_out)
-    es_tau
-
+    # ---- heterogeneity (tau) of the fitted mixture -------------------------
+    w_g      <- w.all / sum(w.all)
+    ncp_mean <- sum(w_g * ncp)
+    ncp_tau2 <- sum(w_g * ncp^2) - ncp_mean^2
+    ncp_tau  <- sqrt(ncp_tau2)
+    es_tau   <- ncp_tau * mean(sei_out)
 
     # ---- Extreme-value (tail) correction -----------------------------------
-    z_grid_ext = z_grid
-    es.ext.neg <- mean(yi[val.input < -Int.End])
-    if (!Directional) es.ext.neg <- abs(es.ext.neg)
-    if(is.nan(es.ext.neg)) {
-       es.ext.neg = 0
+    if (Directional) {
+      es.ext.neg <- mean(yi[val.input < -Int.End])
     } else {
-       z_grid_ext = c(z_grid[1] - xz,z_grid) 
-    } 
-   
+      es.ext.neg <- abs(mean(yi[val.input < -Int.End]))
+    }
+    w.ext.neg <- mean(val.input < -Int.End)
+
     es.ext.pos <- mean(yi[val.input > Int.End])
-    if(is.nan(es.ext.pos)) es.ext.pos = 0
-    if(es.ext.pos > 0) z_grid_ext = c(z_grid_ext,max(z_grid)+xz)
+    w.ext.pos  <- mean(val.input > Int.End)
+
+    grid_share <- 1 - w.ext.neg - w.ext.pos
+
+    z_grid_ext <- z_grid
+    wX_ext     <- wX * grid_share
+    es_ext     <- es.X
+    sig_ext    <- z_grid >= crit
+
+    if (w.ext.neg > 0) {
+      z_grid_ext <- c(min(z_grid) - xz, z_grid_ext)
+      wX_ext     <- c(w.ext.neg, wX_ext)
+      es_ext     <- c(es.ext.neg, es_ext)
+      sig_ext    <- c(TRUE, sig_ext)
+    }
+
+    if (w.ext.pos > 0) {
+      z_grid_ext <- c(z_grid_ext, max(z_grid) + xz)
+      wX_ext     <- c(wX_ext, w.ext.pos)
+      es_ext     <- c(es_ext, es.ext.pos)
+      sig_ext    <- c(sig_ext, TRUE)
+    }
 
     # ---- weighted MEAN over all reconstructed results ----------------------
-    es_mean_all <- sum(es.X * wX, na.rm = TRUE)
+    es_mean_all <- sum(es_ext * wX_ext, na.rm = TRUE)
 
     # ---- weighted mean over reconstructed SIGNIFICANT results only ---------
-    sig.X <- z_grid >= crit
-    if (any(sig.X) && sum(wX[sig.X], na.rm = TRUE) > 0) {
-      wX_sig            <- wX
-      wX_sig[!sig.X]    <- 0
-      wX_sig            <- wX_sig / sum(wX_sig, na.rm = TRUE)
-      es_mean_sig       <- sum(es.X * wX_sig, na.rm = TRUE)
+    if (any(sig_ext) && sum(wX_ext[sig_ext], na.rm = TRUE) > 0) {
+      wX_sig           <- wX_ext
+      wX_sig[!sig_ext] <- 0
+      wX_sig           <- wX_sig / sum(wX_sig, na.rm = TRUE)
+      es_mean_sig      <- sum(es_ext * wX_sig, na.rm = TRUE)
     } else {
       es_mean_sig <- NA_real_
     }
 
     # ---- weighted MEDIAN over all reconstructed results --------------------
-    o      <- order(es.X)
-    es.srt <- es.X[o]
-    w.srt  <- wX[o]
+    o      <- order(es_ext)
+    es.srt <- es_ext[o]
+    w.srt  <- wX_ext[o]
     keep   <- is.finite(es.srt) & is.finite(w.srt) & w.srt > 0
     es.srt <- es.srt[keep]
     w.srt  <- w.srt[keep]
 
     if (length(es.srt) >= 2 && sum(w.srt) > 0) {
       cum.w     <- cumsum(w.srt) / sum(w.srt)
-      # guard against non-unique cum.w (zero-weight ties already removed)
       es_median <- approx(cum.w, es.srt, xout = 0.5, rule = 2,
                           ties = list("ordered", mean))$y
     } else {
       es_median <- NA_real_
     }
 
-    # ---- local effect sizes by z-bin ---------------------------------------
+    # ---- local effect sizes by z-bin ----------------------------------------
     z_breaks <- seq(x.lim.min, Int.End, by = int.loc)
     if (tail(z_breaks, 1) < Int.End) z_breaks <- c(z_breaks, Int.End)
 
@@ -660,13 +650,14 @@ Compute.Power.Z.General = function(
 
     list(
       es_mean_all   = es_mean_all,
-      es_median_all = es_median,       # FIX: was es_mean_all
+      es_median_all = es_median,
       es_mean_sig   = es_mean_sig,
       es_tau        = es_tau,
       local_es      = local_es[5, ],
       local_w       = local_es[3, ]
     )
   } ### EOF get_zcurve_es_estimates
+
 
 
 
@@ -677,13 +668,18 @@ Compute.Power.Z.General = function(
                                        val.input, crit, Directional, alpha,
                                        x.lim.min, x.lim.max, int.loc) {
 
+
+  Compute.Power.Z.Discrete <- function(cp.inp, Int.Beg, Int.End, z_grid,
+                                       val.input, crit, Directional, alpha,
+                                       x.lim.min, x.lim.max, int.loc,
+                                       Folded = FALSE, xz = 0.01) {
+
     w.inp      <- cp.inp$w.inp
     ncp        <- cp.inp$ncp
     components <- length(ncp)
 
     n_total <- length(val.input)
 
-    #table(val.input < 0)
     # extreme-value input PROPORTIONS (of total)
     ext.neg.inp <- sum(val.input < -Int.End) / n_total
     ext.pos.inp <- sum(val.input > Int.End) / n_total
@@ -707,7 +703,7 @@ Compute.Power.Z.General = function(
     w.sig <- w.all * pow
     w.sig <- w.sig / sum(w.sig)
 
-    # extend vectors with extreme components
+    # extend vectors with extreme components (used only for EDR/ERR below)
     if (ext.neg.inp > 0 & Directional == FALSE) {
       ncp.ext = c(-(Int.End+1),ncp)
       pow.ext     <- c(1, pow)
@@ -755,10 +751,18 @@ Compute.Power.Z.General = function(
     EDR <- min(max(EDR, alpha),     1)
 
     # mixture density at each grid point (grid-only ncp and w.all)
-    lik.mat <- outer(z_grid, ncp, function(x, mu) dnorm(x, mu))
-    wd.X    <- lik.mat %*% w.all
+    # val.input is folded/absolute (two.sided <- TRUE), so the density of
+    # |Z| for a component at mu needs the mirror term when Folded = TRUE.
+    if (Folded) {
+      lik.mat <- outer(z_grid, ncp, function(x, mu) dnorm(x - mu) + dnorm(x + mu))
+    } else {
+      lik.mat <- outer(z_grid, ncp, function(x, mu) dnorm(x - mu))
+    }
+    wd.X <- as.vector(lik.mat %*% w.all)
 
     # local power: posterior-weighted average of component power
+    # (numerator and denominator share the same w.all-based lik.mat, so this
+    #  ratio is scale-invariant -- no normalization of wd.X needed or wanted)
     loc.p <- as.vector((lik.mat %*% (w.all * pow)) / wd.X)
 
     # bin into intervals, density-weighted average within each bin
@@ -784,7 +788,7 @@ Compute.Power.Z.General = function(
     d_mean <- NA_real_
     if (sum(idx) > 1) {
       X_ns <- z_grid[idx]
-      pred <- as.vector(wd.X)[idx]
+      pred <- wd.X[idx]
       pred <- pred / (sum(pred) * dx)
 
       pred_cdf  <- cumsum(pred) * dx
@@ -809,13 +813,15 @@ Compute.Power.Z.General = function(
       pow.sel.ext    = pow.sel.ext,
       ncp.ext        = ncp.ext,
       z_grid         = z_grid,
-      wd.X           = as.vector(wd.X),
+      wd.X           = wd.X,
       loc.p          = loc.p,
       local_power    = local_power,
       shape_d_median = d_med,
       shape_d_mean   = d_mean
     )
   } ### EOF Compute.Power.Z.Discrete
+
+
 
 
   ########################
@@ -838,6 +844,8 @@ Compute.Power.Z.General = function(
     int.loc     = int.loc
    )
 
+  #out$wd.X
+  #sum(out$wd.X)*xz
   #w.all = out$w.all
   #out$local_power
   #se.bin = tapply(sei,cut(val.input,ncp),mean)
