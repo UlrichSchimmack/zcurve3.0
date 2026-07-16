@@ -7,8 +7,8 @@
 ########################################################################
 
 
-version <- "zcurve3(3.89)"
-date <- "2026.07.10"  # Version label to appear on plots
+version <- "zcurve3(3.90)"
+date <- "2026.07.15"  # Version label to appear on plots
 note <- "Effect Size Estimation with Bayesian Shrinkage"
 
 print(version)
@@ -238,15 +238,15 @@ run_SQP <- function(
     shape_d_median  = cp.res$shape_d_median,
     shape_d_mean    = cp.res$shape_d_mean,
     local_es        = cp.res$local_es,
-    es_mean_all     = cp.res$mean_all,
-    es_median_all   = cp.res$median_all,
-    es_mean_sig     = cp.res$mean_sig
+    es_mean_all     = cp.res$es_mean_all,
+    es_median_all   = cp.res$es_median_all,
+    es_mean_sig     = cp.res$es_mean_sig,
+    es_tau          = cp.res$es_tau
   )
 
   
   #print(cp.res$mean_all)
   #print(ret$es_mean_all)
-  #stop("checkpoint")  
 
   return(ret)
 }
@@ -506,6 +506,9 @@ Compute.Power.Z.General = function(
       wd.X,
       ncp,
       w.all,
+      pow,
+      pow.dir,
+      pow.sel,
       val.input,                 # explicit (was enclosing-scope)
       yi,                        # explicit
       Directional,               # explicit (was enclosing-scope)
@@ -515,6 +518,30 @@ Compute.Power.Z.General = function(
       int.loc = 0.2,
       Folded  = FALSE,
       xz      = 0.01) {          # explicit tail-anchor offset
+
+
+     if (1 == 2) {
+
+      loc.p       = out$loc.p
+      sei_est     = sei_est
+      z_grid      = out$z_grid
+      wd.X        = out$wd.X
+      ncp         = out$ncp.ext
+      w.all       = out$w.all.ext
+      pow         = out$pow.ext
+      pow.dir     = out$pow.dir.ext
+      pow.sel     = out$pow.sel.ext
+
+    }
+
+    #loc.p = out$loc.p
+    #wd.X = out$wd.X
+    #w.all = out$w.all
+    #loc.ncp = qnorm(loc.p) + crit
+    #plot(loc.ncp,wd.X)
+    #
+    #loc.es = loc.ncp * sei_est[,2]
+    #plot(loc.es,wd.X)
 
     comp_ncp <- ncp
     comp_w   <- w.all
@@ -544,62 +571,48 @@ Compute.Power.Z.General = function(
 
     local_ncp.X <- num / den
     local_ncp.X[!is.finite(local_ncp.X)] <- NA_real_
-    es.X <- abs(local_ncp.X) * sei_out
 
-    # ---- Extreme-value (tail) correction -----------------------------------
-    extremes <- (sum(val.input < Int.Beg) > 0 | sum(val.input > Int.End) > 0)
-
-    if (extremes) {
-      has_neg <- min(ncp) < 0
-
-      if (has_neg) z_grid <- c(Int.Beg - xz, z_grid, Int.End + xz)
-      else         z_grid <- c(z_grid, Int.End + xz)
-
-      es.ext.pos <- mean(yi[val.input > Int.End], na.rm = TRUE)
-      es.ext.neg <- if (has_neg) mean(yi[val.input < Int.Beg], na.rm = TRUE) else 0
-      if (!Directional) es.ext.neg <- abs(es.ext.neg)
-      if (is.nan(es.ext.pos)) es.ext.pos <- 0
-      if (is.nan(es.ext.neg)) es.ext.neg <- 0
-
-      w.neg.ext <- mean(val.input < Int.Beg, na.rm = TRUE)
-      w.pos.ext <- mean(val.input > Int.End, na.rm = TRUE)
-      w.grid    <- 1 - w.neg.ext - w.pos.ext
-
-      pow.grid <- sum(loc.p * (wX[seq_along(loc.p)]), na.rm = TRUE)
-      pow.grid <- pmin(pmax(pow.grid, 1e-6), 1 - 1e-6)
-      pow.ext  <- 1
-
-      w.all.grid.raw    <- w.grid    / pow.grid
-      w.all.neg.ext.raw <- w.neg.ext / pow.ext
-      w.all.pos.ext.raw <- w.pos.ext / pow.ext
-
-      denom <- w.all.grid.raw + w.all.neg.ext.raw + w.all.pos.ext.raw
-
-      w.all.grid    <- w.all.grid.raw    / denom
-      w.all.neg.ext <- w.all.neg.ext.raw / denom
-      w.all.pos.ext <- w.all.pos.ext.raw / denom
-
-      if (has_neg) {
-        es.X <- c(es.ext.neg, es.X, es.ext.pos)
-        wX   <- c(w.all.neg.ext, w.all.grid * wX, w.all.pos.ext)
-      } else {
-        es.X <- c(es.X, es.ext.pos)
-        wX   <- c(w.all.grid * wX, w.all.pos.ext)
-      }
-      if (!Directional) es.X <- abs(es.X)
-
-      es.X[is.nan(es.X)] <- NA_real_
+    if(Directional) {
+      es.X <- local_ncp.X * sei_out
+    } else {
+      es.X <- abs(local_ncp.X) * sei_out
     }
 
-    # length invariant across the three grid-aligned vectors
-    stopifnot(length(es.X)   == length(wX),
-              length(z_grid) == length(es.X))
+    w_g        <- w.all / sum(w.all)          # weights on components
+    ncp_mean   <- sum(w_g * ncp)
+    ncp_tau2   <- sum(w_g * ncp^2) - ncp_mean^2
+    ncp_tau    <- sqrt(ncp_tau2)
+    es_tau = ncp_tau * mean(sei_out)
+    es_tau
 
-    # renormalize wX (extremes block may have rebuilt it)
-    wX <- wX / sum(wX, na.rm = TRUE)
+
+    # ---- Extreme-value (tail) correction -----------------------------------
+    z_grid_ext = z_grid
+    es.ext.neg <- mean(yi[val.input < -Int.End])
+    if (!Directional) es.ext.neg <- abs(es.ext.neg)
+    if(is.nan(es.ext.neg)) {
+       es.ext.neg = 0
+    } else {
+       z_grid_ext = c(z_grid[1] - xz,z_grid) 
+    } 
+   
+    es.ext.pos <- mean(yi[val.input > Int.End])
+    if(is.nan(es.ext.pos)) es.ext.pos = 0
+    if(es.ext.pos > 0) z_grid_ext = c(z_grid_ext,max(z_grid)+xz)
 
     # ---- weighted MEAN over all reconstructed results ----------------------
     es_mean_all <- sum(es.X * wX, na.rm = TRUE)
+
+    # ---- weighted mean over reconstructed SIGNIFICANT results only ---------
+    sig.X <- z_grid >= crit
+    if (any(sig.X) && sum(wX[sig.X], na.rm = TRUE) > 0) {
+      wX_sig            <- wX
+      wX_sig[!sig.X]    <- 0
+      wX_sig            <- wX_sig / sum(wX_sig, na.rm = TRUE)
+      es_mean_sig       <- sum(es.X * wX_sig, na.rm = TRUE)
+    } else {
+      es_mean_sig <- NA_real_
+    }
 
     # ---- weighted MEDIAN over all reconstructed results --------------------
     o      <- order(es.X)
@@ -618,19 +631,8 @@ Compute.Power.Z.General = function(
       es_median <- NA_real_
     }
 
-    # ---- weighted mean over reconstructed SIGNIFICANT results only ---------
-    sig.X <- z_grid >= crit
-    if (any(sig.X) && sum(wX[sig.X], na.rm = TRUE) > 0) {
-      wX_sig            <- wX
-      wX_sig[!sig.X]    <- 0
-      wX_sig            <- wX_sig / sum(wX_sig, na.rm = TRUE)
-      es_mean_sig       <- sum(es.X * wX_sig, na.rm = TRUE)
-    } else {
-      es_mean_sig <- NA_real_
-    }
-
     # ---- local effect sizes by z-bin ---------------------------------------
-    z_breaks <- seq(Int.Beg, Int.End, by = int.loc)
+    z_breaks <- seq(x.lim.min, Int.End, by = int.loc)
     if (tail(z_breaks, 1) < Int.End) z_breaks <- c(z_breaks, Int.End)
 
     local_es <- matrix(NA_real_, nrow = 5, ncol = length(z_breaks) - 1)
@@ -657,11 +659,12 @@ Compute.Power.Z.General = function(
     }
 
     list(
-      mean_all   = es_mean_all,
-      median_all = es_median,       # FIX: was es_mean_all
-      mean_sig   = es_mean_sig,
-      local_es   = local_es[5, ],
-      local_w    = local_es[3, ]
+      es_mean_all   = es_mean_all,
+      es_median_all = es_median,       # FIX: was es_mean_all
+      es_mean_sig   = es_mean_sig,
+      es_tau        = es_tau,
+      local_es      = local_es[5, ],
+      local_w       = local_es[3, ]
     )
   } ### EOF get_zcurve_es_estimates
 
@@ -680,8 +683,9 @@ Compute.Power.Z.General = function(
 
     n_total <- length(val.input)
 
+    #table(val.input < 0)
     # extreme-value input PROPORTIONS (of total)
-    ext.neg.inp <- sum(val.input < Int.Beg) / n_total
+    ext.neg.inp <- sum(val.input < -Int.End) / n_total
     ext.pos.inp <- sum(val.input > Int.End) / n_total
 
     # component power (two-tailed, with sign error)
@@ -704,20 +708,33 @@ Compute.Power.Z.General = function(
     w.sig <- w.sig / sum(w.sig)
 
     # extend vectors with extreme components
-    has_neg <- min(ncp) < 0
-    if (has_neg) {
-      pow.ext     <- c(1, pow,     1)
-      pow.dir.ext <- c(1, pow.dir, 1)
-      pow.sel.ext <- c(1, pow.sel, 1)
-      w.inp.ext   <- c(ext.neg.inp,
-                       w.inp * (1 - ext.neg.inp - ext.pos.inp),
-                       ext.pos.inp)
+    if (ext.neg.inp > 0 & Directional == FALSE) {
+      ncp.ext = c(-(Int.End+1),ncp)
+      pow.ext     <- c(1, pow)
+      pow.dir.ext <- c(1, pow.dir)
+      pow.sel.ext <- c(1, pow.sel)
+      w.inp.ext   <- c(ext.neg.inp,w.inp * (1 - ext.neg.inp))
     } else {
-      pow.ext     <- c(pow,     1)
+      ncp.ext = ncp
+      pow.ext = pow
+      pow.dir.ext = pow.dir
+      pow.sel.ext  = pow.sel
+      w.inp.ext   <- w.inp
+    } 
+
+    if (ext.pos.inp > 0)  {
+      ncp.ext = c(ncp,Int.End + 1)
+      pow.ext     <- c(pow.ext, 1)
       pow.dir.ext <- c(pow.dir, 1)
       pow.sel.ext <- c(pow.sel, 1)
-      w.inp.ext   <- c(w.inp * (1 - ext.pos.inp), ext.pos.inp)
-    }
+      w.inp.ext   <- c(w.inp * (1 - ext.pos.inp),ext.pos.inp)
+    } else {
+      ncp.ext = ncp.ext
+      pow.ext = pow.ext
+      pow.dir.ext = pow.dir.ext
+      pow.sel.ext  = pow.sel.ext
+      w.inp.ext   <- w.inp.ext
+    } 
 
     stopifnot(length(pow.ext)     == length(w.inp.ext),
               length(pow.dir.ext) == length(w.inp.ext),
@@ -786,6 +803,11 @@ Compute.Power.Z.General = function(
       EDR            = EDR,
       ERR            = ERR,
       w.all          = w.all,
+      w.all.ext      = w.all.ext,
+      pow.ext        = pow.ext,
+      pow.dir.ext    = pow.dir.ext,
+      pow.sel.ext    = pow.sel.ext,
+      ncp.ext        = ncp.ext,
       z_grid         = z_grid,
       wd.X           = as.vector(wd.X),
       loc.p          = loc.p,
@@ -796,9 +818,9 @@ Compute.Power.Z.General = function(
   } ### EOF Compute.Power.Z.Discrete
 
 
-  #################
-  ### Main Power
-  #################
+  ########################
+  ### Main Power # ppp2
+  ########################
   xz     <- 0.01
   z_grid <- seq(x.lim.min, Int.End, by = 0.01)
 
@@ -815,11 +837,23 @@ Compute.Power.Z.General = function(
     x.lim.max   = x.lim.max,
     int.loc     = int.loc
    )
+
+  #w.all = out$w.all
+  #out$local_power
+  #se.bin = tapply(sei,cut(val.input,ncp),mean)
+  #ncp.bin = qnorm(out$local_power,1.96)
+  #ncp.bin
+  #ncp.bin*se.bin
+  #zval.bin = tapply(val.input,cut(val.input,ncp),mean)
+  #zval.bin
+  #yi.bin = tapply(yi,cut(val.input,ncp),mean)
+  #yi.bin
  
-  out$local_es   <- NULL
-  out$mean_all   <- NULL
-  out$median_all <- NULL
-  out$mean_sig   <- NULL
+  out$local_es      <- NULL
+  out$es_mean_all   <- NULL
+  out$es_median_all <- NULL
+  out$es_mean_sig   <- NULL
+  out$es_tau        <- NULL
 
   if (!is.null(yi)) {
 
@@ -833,13 +867,16 @@ Compute.Power.Z.General = function(
       Int.Beg = Int.Beg
     )
 
- es_est <- get_zcurve_es_estimates(
+   es_est <- get_zcurve_es_estimates(
       loc.p       = out$loc.p,
       sei_est     = sei_est,
       z_grid      = out$z_grid,
       wd.X        = out$wd.X,
-      ncp         = cp.inp$ncp,       # FIX: was undefined `ncp`
-      w.all       = out$w.all,
+      ncp         = out$ncp.ext,
+      w.all       = out$w.all.ext,
+      pow         = out$pow.ext,
+      pow.dir     = out$pow.dir.ext,
+      pow.sel     = out$pow.sel.ext,
       val.input   = val.input,        # explicit
       yi          = yi,               # explicit
       Directional = Directional,      # explicit
@@ -851,11 +888,20 @@ Compute.Power.Z.General = function(
       xz          = xz
     )
  
-    out$local_es   <- es_est$local_es
-    out$mean_all   <- es_est$mean_all
-    out$median_all <- es_est$median_all   # FIX: now propagated
-    out$mean_sig   <- es_est$mean_sig
-  }
+    out$local_es      <- es_est$local_es
+    out$es_mean_all   <- es_est$es_mean_all
+    out$es_median_all <- es_est$es_median_all   # FIX: now propagated
+    out$es_mean_sig   <- es_est$es_mean_sig
+    out$es_tau        <- es_est$es_tau
+
+    out$local_power 
+    out$local_es
+
+  } # EOF es 
+
+  #round(cbind(w.all[1:6],zval.bin,ncp.bin,se.bin,yi.bin,out$local_es),2)
+
+  out
  
   return(out)
  
@@ -1013,13 +1059,12 @@ run_OF <- function(val.input,yi=NULL,sei=NULL,ODR,Int.Beg,Int.End,ncp,zsds, cola
     fit     = auto$objective
   )
 
-  print(of.est)
+  #print(of.est)
 
   cp.inp = of.est
  
   #print(cp.inp)
   #print("OF power")
-  #stop("checkpoint")
 
 
   ## ---- Compute power for each bootstrap result ----
@@ -1034,8 +1079,11 @@ run_OF <- function(val.input,yi=NULL,sei=NULL,ODR,Int.Beg,Int.End,ncp,zsds, cola
         x.lim.max = x.lim.max)
 
   #print(cp.res$w.all)
-  #print(cp.res$mean_all)
-  #print(cp.res$median_all)
+  #sd(cp.res$w.all)
+  #print(cp.res$es_mean_all)
+  #print(cp.res$es_median_all)
+  #print(cp.res$es_tau)
+  #print(sim_run["true_tau"])
 
   ret = list(
     w.inp           = of.est$w.inp,
@@ -1050,11 +1098,13 @@ run_OF <- function(val.input,yi=NULL,sei=NULL,ODR,Int.Beg,Int.End,ncp,zsds, cola
     shape_d_median  = cp.res$shape_d_median,
     shape_d_mean    = cp.res$shape_d_mean,
     local_es        = cp.res$local_es,
-    es_mean_all     = cp.res$mean_all,
-    es_median_all   = cp.res$median_all,
-    es_mean_sig     = cp.res$mean_sig
+    es_mean_all     = cp.res$es_mean_all,
+    es_median_all   = cp.res$es_median_all,
+    es_mean_sig     = cp.res$es_mean_sig,
+    es_tau          = cp.res$es_tau
   )
 
+  ret
   
   return(ret)
 
@@ -1072,16 +1122,19 @@ run_OF <- function(val.input,yi=NULL,sei=NULL,ODR,Int.Beg,Int.End,ncp,zsds, cola
 
 run_EM <- function(
   val.input,
-  ncp,
-  zsds,
+  yi, 
+  sei, 
   Int.Beg,
   Int.End,
+  ncp,
+  zsds,
   NCP_FIXED  = TRUE,
   ZSDS_FIXED = TRUE,
   W_FIXED    = FALSE,
-  max_iter   = 200,
-  tol        = 1e-6
-) {
+  x.lim.min,
+  x.lim.max,
+  max_iter   = 500,
+  tol        = 1e-8) {
 
 
 n_starts = 1
@@ -1547,19 +1600,17 @@ update_zsds_newton_folded <- function(
   #print(em.est)
 
   cp.inp = em.est
-  cp.inp$val.input = val.input
 
-
-  ## ---- Compute power for each bootstrap result ----
+  ## ---- Compute power
   cp.res = Compute.Power.Z.General(
         cp.inp = cp.inp, 
+        val.input = val.input,
         Int.Beg = Int.Beg,
         Int.End = Int.End, 
         yi = yi, 
         sei = sei,
         x.lim.min = x.lim.min,
         x.lim.max = x.lim.max)
-
 
   ret = list(
     w.inp           = em.est$w.inp,
@@ -1574,9 +1625,10 @@ update_zsds_newton_folded <- function(
     shape_d_median  = cp.res$shape_d_median,
     shape_d_mean    = cp.res$shape_d_mean,
     local_es        = cp.res$local_es,
-    es_mean_all     = cp.res$mean_all,
-    es_median_all   = cp.res$median_all,
-    es_mean_sig     = cp.res$mean_sig
+    es_mean_all     = cp.res$es_mean_all,
+    es_median_all   = cp.res$es_median_all,
+    es_mean_sig     = cp.res$es_mean_sig,
+    es_tau          = cp.res$es_tau
   )
 
   ret
@@ -1620,6 +1672,7 @@ run_bootstrap <- function(
                    x.lim.max
                   ) {
 
+
     
       #NCP_FIXED = FALSE; ZSDS_FIXED = FALSE; W_FIXED = TRUE; ncp = 2.5; zsds = 2
       #ncp = 0:6;zsds = rep(1,length(ncp))
@@ -1650,6 +1703,7 @@ run_bootstrap <- function(
 
       }
 
+ 
       #Est.Method = "OF";width = 1
       #Est.Method = "EM"
 
@@ -1663,7 +1717,8 @@ run_bootstrap <- function(
 
 
       if (!is.null(yi)) var.list = c(var.list,"yi","sei")
-    
+
+      boot_res = NULL
 
       if (Est.Method == "OF") {
 
@@ -1723,6 +1778,8 @@ run_bootstrap <- function(
   
       }) # EOF boot_res
 
+      if(is.null(boot_res)) stop("boostrap failure.")
+
     } # EOF OF
 
      # boot_res
@@ -1759,19 +1816,24 @@ run_bootstrap <- function(
           if (!is.null(yi)) { yi_boot <- yi[rows]; sei_boot <- sei[rows] 
            } else { yi_boot = NULL; sei_boot = NULL }
 
-         fit <- run_EM(
-              val.input  = boot_all,
-              ncp        = ncp,
-              zsds       = zsds,
-              Int.Beg    = Int.Beg,
-              Int.End    = Int.End,
-              NCP_FIXED  = NCP_FIXED,
-              ZSDS_FIXED = ZSDS_FIXED,
-              W_FIXED    = W_FIXED)
+          fit.EM <- #tryCatch(
+                 run_EM(
+                 val.input  = boot_all,
+                 yi         = yi, # yi_boot,
+                 sei        = sei, #, _boot,
+                 Int.Beg    = Int.Beg,
+                 Int.End    = Int.End,
+                 ncp        = ncp,
+                 zsds       = zsds,
+                 NCP_FIXED  = NCP_FIXED,
+                 ZSDS_FIXED = ZSDS_FIXED,
+                 W_FIXED    = W_FIXED,
+                 x.lim.min  = x.lim.min,
+                 x.lim.max  = x.lim.max
+                 )
+	         #,error = function(e) NULL )
 
-          fit.res = fit 
-
-          fit.res
+          fit.EM 
 
          }) # close boot_res
 
@@ -1927,17 +1989,23 @@ run_zcurve = function(Est.Method,val.input,crit,Int.Beg,Int.End,
       print("Using EM")
 
       #summary(val.input)
-      res.em <- run_EM(
-        val.input = val.input,
-        ncp = ncp,
-        zsds = zsds,
-        Int.Beg = Int.Beg,
-        Int.End = Int.End,
-        NCP_FIXED = NCP_FIXED,
-        ZSDS_FIXED = ZSDS_FIXED,
-        W_FIXED = W_FIXED
-      )
+         res.em <- run_EM(
+                 val.input = val.input, 
+                 yi = yi,
+                 sei = sei,
+                 Int.Beg = Int.Beg,
+                 Int.End = Int.End,   
+                 ncp = ncp,
+                 zsds = zsds,
+                 NCP_FIXED  = NCP_FIXED,
+                 ZSDS_FIXED = ZSDS_FIXED,
+                 W_FIXED = W_FIXED,
+                 x.lim.min  = x.lim.min,
+                 x.lim.max  = x.lim.max
+        )
 
+
+     #cp.inp = res.em
      res.em
      res.run = res.em
      
@@ -1970,6 +2038,7 @@ run_zcurve = function(Est.Method,val.input,crit,Int.Beg,Int.End,
 
   #res.run
 
+
   #plot(es_pe$w.est,es_pe$w.obs,xlim=c(0,.25),ylim=c(0,.25))
 
     res.pe <- list(
@@ -1992,10 +2061,11 @@ run_zcurve = function(Est.Method,val.input,crit,Int.Beg,Int.End,
       local_es_pe      = res.run$local_es,
       es_mean_all_pe   = res.run$es_mean_all,
       es_median_all_pe = res.run$es_median_all,
-      es_mean_sig_pe   = res.run$es_mean_sig
+      es_mean_sig_pe   = res.run$es_mean_sig,
+      es_tau_pe        = res.run$es_tau
      )
 
-     print(res.pe$es_median_all_pe)
+     print(res.pe$es_tau_pe)
 
      #res.pe 
      #Run.Gamma = FALSE
@@ -2027,13 +2097,18 @@ run_zcurve = function(Est.Method,val.input,crit,Int.Beg,Int.End,
 
   ### start boostrap
 
-  #Est.Method = "EM"; boot.iter = 0
+  #Est.Method = "OF"; boot.iter = 50
   #cluster.id = NULL
   if (boot.iter > 0) {  
 
        print("Begin of Bootstrap")
+   
+       boot_res = NULL
 
-       boot_res <- run_bootstrap(val.input = val.input, yi = yi,sei = sei,
+       boot_res <- run_bootstrap(
+          val.input   = val.input, 
+          yi          = yi,
+          sei         = sei,
           crit        = crit,
           ncp         = res.pe$ncp,
           zsds        = res.pe$zsds,
@@ -2087,7 +2162,8 @@ run_zcurve = function(Est.Method,val.input,crit,Int.Beg,Int.End,
                 ODR_EDR_D       = c(res.pe$ODR_EDR_D,NA,NA),
                 es_mean_all     = c(res.pe$es_mean_all_pe,NA,NA),
                 es_median_all   = c(res.pe$es_median_all_pe,NA,NA),
-                es_mean_sig     = c(res.pe$es_mean_sig_pe,NA,NA)
+                es_mean_sig     = c(res.pe$es_mean_sig_pe,NA,NA),
+                es_tau          = c(res.pe$es_tau_pe,NA,NA)
             )
 
 
@@ -2151,6 +2227,10 @@ run_zcurve = function(Est.Method,val.input,crit,Int.Beg,Int.End,
             es_median_all_boot = sapply(boot_res, function(x) x$es_median_all)
             es_median_all_ci = quantile(es_median_all_boot, probs = c(.025,.975), na.rm=TRUE)
             es_median_all = c(res.pe$es_median_all_pe,es_median_all_ci)
+
+            es_tau_boot = sapply(boot_res, function(x) x$es_tau)
+            es_tau_ci = quantile(es_tau_boot, probs = c(.025,.975), na.rm=TRUE)
+            es_tau = c(res.pe$es_tau_pe,es_tau_ci)
 
 
             es_mean_sig_boot = sapply(boot_res, function(x) x$es_mean_sig)
@@ -2261,10 +2341,7 @@ run_zcurve = function(Est.Method,val.input,crit,Int.Beg,Int.End,
         es_mean_all     = c(res.pe$es_mean_all_pe,NA,NA)
         es_median_all   = c(res.pe$es_median_all_pe,NA,NA)
         es_mean_sig     = c(res.pe$es_mean_sig_pe,NA,NA)
-
-        print(es_median_all)
-        #stop("checkpoint")
-       
+        es_tau          = c(res.pe$es_tau_pe,NA,NA)
 
   } # EOF no bootstrap
 
@@ -2287,16 +2364,16 @@ run_zcurve = function(Est.Method,val.input,crit,Int.Beg,Int.End,
             shape_d_mean       = shape_d_mean,
             es_mean_all        = es_mean_all,
             es_median_all      = es_median_all,  
-            es_mean_sig        = es_mean_sig
+            es_mean_sig        = es_mean_sig,
+            es_tau             = es_tau
           )
 
 
 });print(zcurve.time) ### End of Timer
 
 
-print(zcurve.res$es_median_all)
+#print(zcurve.res$es_tau)
 
-#stop("checkpoint")
 
 #zcurve.res
 
@@ -2333,13 +2410,22 @@ Write_Local_Power_ES = function(l_p, l_es) {
   # Midpoints of each bin — these are the correct label positions
   midpoints = seq(x.lim.min, x.lim.max - int.loc, by = int.loc) + int.loc / 2
 
-  # Format labels
-  lab1 = paste0(round(l_p * 100), "%")
-  lab2 = gsub("0.",".",sprintf("%.2f", l_es))
-  lab2
+  #l_es = zres.tmz$local_es[1,]
+   l_es
 
-  mtext(lab1, side = 1, line = -.5, at = midpoints, cex = 1.0, las = 1)
-  mtext(lab2, side = 1, line =  .5, at = midpoints-.10, cex = 1.0, las = 1)
+  # Format labels
+  lab1 <- paste0(round(l_p * 100), "%")
+  lab2 <- sprintf("%.2f", l_es)
+#  lab2 <- paste0(paste(x[-length(x)], collapse = ", "), ", and ", x[length(x)])
+
+  lab1 = c("local power",lab1)
+  lab2 = c("local es",lab2)
+
+  location1 = c(-1,midpoints)
+  location2 = c(-1,midpoints-.05)
+
+  mtext(lab1, side = 1, line = -.5, at = location1, cex = 1.0, las = 1)
+  mtext(lab2, side = 1, line =  .5, at = location2, cex = 1.0, las = 1)
 
 } ### EOF Write.Local.Power
 
@@ -3200,8 +3286,8 @@ Get.Gamma.Density <- function(z, shape, rate = NULL,
 
 #print(paste0("Title: ",Title))
 
-x.lim.min = x.lim.min
-x.lim.max = x.lim.max
+#cluster.id = NULL
+
 
 skip_zcurve = FALSE
 
@@ -3227,7 +3313,7 @@ if (!is.null(sei)) sei = sei[!missing]
 check = c(length(val.input),length(cluster.id),length(yi),length(sei))
 check = check[check > 0]
 check = check == sum(check)/length(check)
-if(mean(check) < 1) stop("unequal number of cases")
+if(mean(check) < 1) stop("Check data: unequal number of cases")
 
 #if (two.sided) val.input = abs(val.input)
 
@@ -3284,8 +3370,6 @@ g_zsds_fixed = TRUE
 #ncp = g_ncp;zsds=g_zsds;NCP_FIXED = g_ncp_fixed;ZSDS_FIXED = g_zsds_fixed
 
 heterogeneity = rep(NA,3)
-
-#cluster.id = NULL
 
 if(!skip_zcurve) {
 
@@ -3362,7 +3446,7 @@ res.main = run_zcurve(Est.Method = Est.Method,val.input = val.input,
 #print(res.main$local_es)
 #print(res.main$es_mean_all)
 #print(res.main$es_median_all)
-#stop("Checkpoint")
+#print(res.main$es_tau)
 
 ### adjustments for difficult cases 
 
@@ -3475,7 +3559,8 @@ if(skip_zcurve) {
    shape_d_mean   = rep(NA,3),
    es_mean_all    = rep(NA,3),
    es_median_all  = rep(NA,3),
-   es_mean_sig    = rep(NA,3)
+   es_mean_sig    = rep(NA,3),
+   es_tau         = rep(NA,3)
    )
 
 POW_h1_sig = rep(NA,3)
@@ -3502,6 +3587,8 @@ names(res.main$shape_d_median) = c("shape_median_pe","shape_median_lb","shape_me
 names(res.main$es_mean_all)   = c("es_mean_all_pe","es_mean_all_lb","es_mean_all_ub")
 names(res.main$es_median_all) = c("es_median_all_pe","es_median_all_lb","es_median_all_ub")
 names(res.main$es_mean_sig)   = c("es_mean_sig_pe","es_mean_sig_lb","es_mean_sig_ub")
+names(res.main$es_tau)        = c("es_tau_pe","es_tau_lb","es_tau_ub")
+
 
 
 if(Heterogeneity.Test) {
@@ -3568,11 +3655,13 @@ results = list(
 		gamma_err      = res.main$gamma_err,
          es_mean_all    = res.main$es_mean_all,
          es_median_all  = res.main$es_median_all,
-         es_mean_sig    = res.main$es_mean_sig
+         es_mean_sig    = res.main$es_mean_sig,
+         es_tau         = res.main$es_tau
       )
 
 #fff
 
+#results
 #results$w.all
 #summary(val.input)
 
